@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "JeevanPath",
+    "slug": "jeevanpath",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#ffffff",
+      "resizeMode": "contain"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCDehQZpHc1X4O8IAdmwRw0gJbEGVKiRro"
+        }
+      }
+    },
+    "web": {},
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
