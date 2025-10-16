@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList, Modal, ScrollView, Switch, Linking, SafeAreaView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { colors } from '@/theme/theme';
@@ -64,9 +65,9 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.brand}><Text style={styles.heart}>❤</Text> JeevanPath</Text>
-        <View style={{flexDirection:'row', gap:16}}>
-          <Text>🔔</Text>
-          <Text>⚙</Text>
+        <View style={{flexDirection:'row', gap:16, alignItems:'center'}}>
+          <Ionicons name="notifications-outline" size={26} color={colors.textPrimary} />
+          <Ionicons name="settings-outline" size={26} color={colors.textPrimary} />
         </View>
       </View>
 
