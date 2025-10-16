@@ -4,7 +4,7 @@ import Resource from '../models/Resource';
 
 dotenv.config();
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/jeevanpath';
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://prasannasimha5002_db_user:prasanna@cluster0.p6esyqh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
 
 async function run() {
   await mongoose.connect(MONGO_URI);

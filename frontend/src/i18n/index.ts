@@ -3,7 +3,8 @@ import { initReactI18next } from 'react-i18next';
 
 const resources = {
   en: { translation: { login: 'Login / Signup', search_placeholder: 'Search resources' } },
-  hi: { translation: { login: 'लॉगिन / साइनअप', search_placeholder: 'खोजें' } }
+  hi: { translation: { login: 'लॉगिन / साइनअप', search_placeholder: 'खोजें' } },
+  te: { translation: { login: 'లాగిన్ / సైన్ అప్', search_placeholder: 'వనరులను వెతకండి' } }
 };
 
 i18n.use(initReactI18next).init({

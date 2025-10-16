@@ -35,6 +35,9 @@
     "web": {},
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "EXPO_PUBLIC_API_URL": "http://192.168.157.169:4000"
+    }
   }
 }
