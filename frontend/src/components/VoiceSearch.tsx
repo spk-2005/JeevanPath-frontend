@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Voice, { SpeechResultsEvent, SpeechErrorEvent } from '@react-native-voice/voice';
+import Constants from 'expo-constants';
 import { useAppColors } from '../theme/ThemeProvider';
 import { detectLanguage } from '../utils/translationService';
 
@@ -44,7 +45,22 @@ export default function VoiceSearch({
     // Initialize voice recognition
     const initializeVoice = async () => {
       try {
-        const available = await Voice.isAvailable();
+        // Expo Go does not include the native voice module; guard accordingly
+        const isExpoGo = (Constants as any)?.appOwnership === 'expo';
+        if (!Voice || typeof (Voice as any).isAvailable !== 'function' || isExpoGo) {
+          setIsAvailable(false);
+          setError('Voice not available in this build');
+          return;
+        }
+
+        let available = false;
+        try {
+          available = !!(await (Voice as any).isAvailable());
+        } catch {
+          setIsAvailable(false);
+          setError('Voice not available on this device');
+          return;
+        }
         setIsAvailable(!!available);
         
         if (!available) {
@@ -95,9 +111,9 @@ export default function VoiceSearch({
           }
         };
 
-      } catch (err) {
-        console.error('Voice initialization error:', err);
-        setError('Failed to initialize voice recognition');
+      } catch (_err) {
+        // Suppress noisy console errors in Expo Go; show friendly state instead
+        setError('Voice not available in this build');
         setIsAvailable(false);
       }
     };

@@ -1,3 +1,50 @@
+## Implementation Status (Current Session)
+
+The following updates and fixes were implemented to make the app work reliably on a physical device with Expo Go and to improve basic UX:
+
+- Frontend networking
+  - API base URL now prioritizes `expo.extra.EXPO_PUBLIC_API_URL` from `frontend/app.json`.
+  - Fallback host detection improved (Expo/Metro host on-device) and Android default changed to the developer LAN IP to avoid `10.0.2.2` on phones.
+  - Added a persistent runtime override mechanism (stored in AsyncStorage) that is only used when no explicit config is present.
+
+- Profile experience
+  - New `ProfileScreen` registered in `RootNavigator`; header avatar navigates to it.
+  - Fields: full name, phone, notes, language selector (EN/HI/TE).
+  - Saves locally to AsyncStorage; language switch applies immediately.
+  - Top back button added; bottom back button removed.
+
+- Voice and NLP
+  - `VoiceSearch` hardened for Expo Go: gracefully disables where the native module isn’t available instead of throwing.
+  - NLP utilities (`src/utils/nlp.ts`) are present and used in `SearchScreen` to parse queries and provide suggestions.
+
+- Navigation and build
+  - Fixed header avatar navigation (now routes to `Profile`).
+  - Added Babel Module Resolver with aliases (`@/screens`, `@/utils`, etc.) and installed `babel-plugin-module-resolver` to fix bundling.
+
+- Misc
+  - Minor UI tweaks to spacing (e.g., back icon top padding on `ProfileScreen`).
+
+### What is NOT implemented yet (known gaps)
+
+- Secure backend user persistence from `ProfileScreen` (currently local-only). The app does not create/update user profiles in the backend; add authenticated endpoints (Firebase Admin middleware already exists) and wire token-based calls.
+- Voice capture in Expo Go (needs dev/EAS build with `@react-native-voice/voice`). The component is guarded but not functional in Expo Go by design.
+- Robust resource seeding/fixtures for realistic demos in all categories; ensure `/api/resources` has data in your DB.
+- Map/List linking and distance calculations for resources (placeholder distance/time shown on Home).
+- SafeArea migration: replace `SafeAreaView` with `react-native-safe-area-context` per upstream deprecation warning.
+- Production-ready base URL strategy (consider `.env` or CI-provided `EXPO_PUBLIC_API_URL` for dev/staging/prod).
+
+### How to run now (phone on any network)
+
+1) Backend
+   - `cd backend; npm run dev`
+2) API base URL
+   - Set in `frontend/app.json` → `expo.extra.EXPO_PUBLIC_API_URL` to your LAN IP (e.g., `http://192.168.x.y:4000`) or a public tunnel (e.g., ngrok URL).
+3) Frontend
+   - `cd frontend; npx expo start -c`
+   - Open in Expo Go on your phone
+4) Verify on phone’s browser
+   - Visit your API root and `/api/resources` to confirm reachability and data.
+
 # JeevanPath - Healthcare Resource Locator
 
 JeevanPath is a comprehensive healthcare resource locator application that helps users find nearby medical facilities, pharmacies, and blood banks. The application features a React Native frontend with Expo and a Node.js/Express backend with MongoDB.

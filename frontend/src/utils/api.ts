@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { Platform } from 'react-native';
+import { Platform, NativeModules } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 // Prefer explicit config; otherwise choose sensible defaults per platform
@@ -7,35 +8,47 @@ const extraUrl = (Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_URL
   || (Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_URL; // older Expo fallback
 const envUrl = (typeof process !== 'undefined' && (process as any).env?.EXPO_PUBLIC_API_URL) as string | undefined;
 
-// Try to derive LAN host from Expo debugger/host when running in dev
+// Try to derive LAN host from Expo/Metro host when running in dev, but only accept real LAN IPs
 const guessedLan = (() => {
   try {
-    const hostUri = (Constants as any)?.expoConfig?.hostUri || (Constants as any)?.manifest?.debuggerHost;
+    const hostUri = (Constants as any)?.expoConfig?.hostUri
+      || (Constants as any)?.manifest?.debuggerHost
+      || (NativeModules as any)?.SourceCode?.scriptURL; // Metro dev server URL
+
     if (hostUri) {
-      const hostname = String(hostUri).split(':')[0];
-      return `http://${hostname}:4000`;
+      const hostPart = String(hostUri).split('//').pop() as string;
+      const hostname = hostPart.split(':')[0];
+      // Accept only IPv4 LAN addresses; ignore localhost, 127.0.0.1, and tunnel hostnames
+      const isIpv4 = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+      const isLoopback = hostname === '127.0.0.1' || hostname === '0.0.0.0' || hostname === 'localhost';
+      if (isIpv4 && !isLoopback) {
+        return `http://${hostname}:4000`;
+      }
     }
   } catch {}
   return undefined;
 })();
 
 // Safe defaults for emulators/simulators
-const defaultUrl = Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
+// Override Android fallback to your LAN IP to support physical device testing
+const defaultUrl = Platform.OS === 'android' ? 'http://192.168.137.235:4000' : 'http://localhost:4000';
 
-// Prefer guessed Expo host when running in Expo Go on a physical device
-const inExpoGo = (Constants as any)?.appOwnership === 'expo';
-const BASE_URL = inExpoGo
-  ? (guessedLan || envUrl || extraUrl || defaultUrl)
-  : (envUrl || extraUrl || guessedLan || defaultUrl);
+// Prefer the Expo/Metro host on-device to avoid 10.0.2.2 on physical devices
+let CURRENT_BASE_URL = (extraUrl || envUrl || guessedLan || defaultUrl);
 
 // Debug: log resolved base URL once
 // Note: will print in Metro/Expo logs
 // Use this to confirm the device is targeting the correct server
 // eslint-disable-next-line no-console
-console.log('[API] baseURL =', BASE_URL, '| source =', inExpoGo ? (guessedLan ? 'expo-host' : 'expo-default') : (envUrl ? 'env' : (extraUrl ? 'app.json extra' : (guessedLan ? 'expo-host' : (Platform.OS === 'ios' ? 'ios-default' : 'android-emulator-default')))));
+console.log(
+  '[API] baseURL =',
+  CURRENT_BASE_URL,
+  '| source =',
+  extraUrl ? 'app.json extra' : (envUrl ? 'env' : (guessedLan ? 'expo-host' : (Platform.OS === 'ios' ? 'ios-default' : 'android-emulator-default')))
+);
 
 export const api = axios.create({
-  baseURL: BASE_URL,
+  baseURL: CURRENT_BASE_URL,
   timeout: 15000,
 });
 
@@ -58,6 +71,48 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// Allow runtime override of API base URL via AsyncStorage
+export async function loadApiBaseUrlOverride(): Promise<string | null> {
+  try {
+    const stored = await AsyncStorage.getItem('apiBaseUrl');
+    // Only apply storage override if no explicit config is provided
+    if (!extraUrl && !envUrl && stored && typeof stored === 'string' && stored.startsWith('http')) {
+      const normalized = stored.replace(/\/$/, '');
+      const isLoopback = /^(http:\/\/localhost|http:\/\/127\.0\.0\.1|http:\/\/10\.0\.2\.2)/i.test(normalized);
+      if (!isLoopback) {
+        CURRENT_BASE_URL = normalized;
+        api.defaults.baseURL = CURRENT_BASE_URL;
+        // eslint-disable-next-line no-console
+        console.log('[API] override baseURL =', CURRENT_BASE_URL, '| source =', 'storage');
+        return CURRENT_BASE_URL;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+export async function setApiBaseUrlOverride(url: string): Promise<void> {
+  const normalized = (url || '').trim().replace(/\/$/, '');
+  await AsyncStorage.setItem('apiBaseUrl', normalized);
+  CURRENT_BASE_URL = normalized;
+  api.defaults.baseURL = CURRENT_BASE_URL;
+  // eslint-disable-next-line no-console
+  console.log('[API] override baseURL set =', CURRENT_BASE_URL);
+}
+
+// Load override on module import
+void loadApiBaseUrlOverride();
+
+// Simple connectivity check to help diagnose device ↔ server reachability
+export async function pingApi(): Promise<{ ok: boolean; baseURL: string; error?: string }> {
+  try {
+    const res = await api.get('/');
+    return { ok: !!res?.data, baseURL: CURRENT_BASE_URL };
+  } catch (e: any) {
+    return { ok: false, baseURL: CURRENT_BASE_URL, error: e?.message || 'Network Error' };
+  }
+}
 
 export async function getResources(params?: { type?: string; q?: string; minRating?: number; openNow?: boolean; lat?: number; lng?: number; radiusMeters?: number; services?: string[]; languages?: string[]; insurance?: string[]; transportation?: string[]; wheelchair?: boolean; sortBy?: 'distance' | 'rating' }) {
   // eslint-disable-next-line no-console
