@@ -49,6 +49,24 @@ export async function getResources(params?: { type?: string; q?: string; minRati
   return res.data;
 }
 
+export async function checkDeviceRegistration(phone: string, deviceId: string, platform: string) {
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/users/check-device', { phone, deviceId, platform });
+  const res = await api.post('/api/users/check-device', { phone, deviceId, platform });
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/users/check-device response =', res.data);
+  return res.data;
+}
+
+export async function registerDevice(phone: string, deviceId: string, deviceName: string, platform: string) {
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/users/register-device', { phone, deviceId, deviceName, platform });
+  const res = await api.post('/api/users/register-device', { phone, deviceId, deviceName, platform });
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/users/register-device response =', res.data);
+  return res.data;
+}
+
 
 
 

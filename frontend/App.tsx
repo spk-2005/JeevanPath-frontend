@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { useColorScheme, View, Text, ActivityIndicator } from 'react-native';
+import { ThemeProvider, useThemeMode } from './src/theme/ThemeProvider';
 import './src/i18n';
 import { useFonts, Inter_400Regular, Inter_500Medium } from '@expo-google-fonts/inter';
 import { Poppins_600SemiBold, Poppins_700Bold } from '@expo-google-fonts/poppins';
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono';
 
-export default function App() {
-  const scheme = useColorScheme();
+function AppInner() {
+  const systemScheme = useColorScheme();
+  const { effective } = useThemeMode();
   const [isReady, setIsReady] = useState(false);
   const [fontsLoaded] = useFonts({
     Inter_400Regular, Inter_500Medium,
@@ -36,9 +38,17 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <NavigationContainer theme={effective === 'dark' ? DarkTheme : DefaultTheme}>
       <RootNavigator />
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppInner />
+    </ThemeProvider>
   );
 }
 

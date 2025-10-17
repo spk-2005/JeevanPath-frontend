@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { checkDeviceRegistration } from '../utils/api';
+import { getDeviceInfo } from '../utils/device';
+import { saveLoginState, clearLoginState } from '../utils/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LoginScreen() {
   const navigation = useNavigation<any>();
@@ -22,16 +26,56 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const formattedPhone = formatPhoneNumber(phone);
-      const randomOTP = Math.floor(1000 + Math.random() * 9000).toString();
-      Alert.alert(
-        'Verification Code',
-        `Your 4-digit code is: ${randomOTP}`,
-        [{ text: 'Continue', onPress: () => navigation.navigate('OTP', { phone: formattedPhone, randomOTP }) }]
+      const deviceInfo = await getDeviceInfo();
+      
+      // Check if device is already registered
+      const deviceCheck = await checkDeviceRegistration(
+        formattedPhone,
+        deviceInfo.deviceId,
+        deviceInfo.platform
       );
+
+      if (deviceCheck.isRegistered && !deviceCheck.requiresOTP) {
+        // Device is registered, skip OTP and go directly to main screen
+        // Save login state for automatic login
+        await saveLoginState(formattedPhone, deviceInfo.deviceId);
+        Alert.alert(
+          'Welcome Back!',
+          `Welcome back to your ${deviceInfo.deviceName}`,
+          [{ text: 'Continue', onPress: () => navigation.replace('Main') }]
+        );
+      } else {
+        // Device not registered or new device, require OTP
+        const randomOTP = Math.floor(1000 + Math.random() * 9000).toString();
+        Alert.alert(
+          'Verification Code',
+          `Your 4-digit code is: ${randomOTP}`,
+          [{ 
+            text: 'Continue', 
+            onPress: () => navigation.navigate('OTP', { 
+              phone: formattedPhone, 
+              randomOTP,
+              deviceInfo,
+              isNewDevice: !deviceCheck.isRegistered
+            }) 
+          }]
+        );
+      }
     } catch (e) {
-      Alert.alert('Error', 'Failed to generate OTP. Please try again.');
+      console.error('Error checking device registration:', e);
+      Alert.alert('Error', 'Failed to check device registration. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const clearDeviceForTesting = async () => {
+    try {
+      await AsyncStorage.removeItem('deviceId');
+      await clearLoginState();
+      Alert.alert('Device Cleared', 'Device registration and login state cleared for testing. Next login will require OTP.');
+    } catch (e) {
+      Alert.alert('Error', 'Failed to clear device registration.');
     }
   };
 
@@ -82,6 +126,11 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <Text style={styles.consent}>By continuing, you agree to our privacy policy. Your data is secured and used to provide personalized health resource recommendations.</Text>
+        
+        {/* Test button for clearing device registration */}
+        <TouchableOpacity style={styles.testBtn} onPress={clearDeviceForTesting}>
+          <Text style={styles.testBtnText}>🧪 Clear Device (Testing)</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Footer badges */}
@@ -118,6 +167,8 @@ const styles = StyleSheet.create({
   demoBadgeText: { fontSize: 12, fontWeight: '800' },
   demoBtnText: { fontWeight: '700' },
   consent: { fontSize: 12, color: '#64748b' },
+  testBtn: { backgroundColor: '#fef3c7', borderWidth: 1, borderColor: '#f59e0b', borderRadius: 8, padding: 8, alignItems: 'center', marginTop: 8 },
+  testBtnText: { color: '#92400e', fontSize: 12, fontWeight: '600' },
   footerRow: { flexDirection: 'row', gap: 12, justifyContent: 'space-between', marginTop: 12 },
   footerPill: { flex: 1, backgroundColor: '#fff', paddingVertical: 12, borderRadius: 999, alignItems: 'center', elevation: 1 }
 });

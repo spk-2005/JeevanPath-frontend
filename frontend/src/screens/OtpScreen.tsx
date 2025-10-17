@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { registerDevice } from '../utils/api';
+import { saveLoginState } from '../utils/auth';
 
 export default function OtpScreen() {
+  const { t } = useTranslation();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { phone, randomOTP } = route.params;
+  const { phone, randomOTP, deviceInfo, isNewDevice } = route.params;
   
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,6 +26,28 @@ export default function OtpScreen() {
       if (code === randomOTP) {
         // OTP verification successful
         console.log('OTP verified successfully');
+        
+        // Register device if it's a new device
+        if (deviceInfo && isNewDevice) {
+          try {
+            await registerDevice(
+              phone,
+              deviceInfo.deviceId,
+              deviceInfo.deviceName,
+              deviceInfo.platform
+            );
+            console.log('Device registered successfully');
+          } catch (deviceError) {
+            console.error('Error registering device:', deviceError);
+            // Continue with navigation even if device registration fails
+          }
+        }
+        
+        // Save login state for automatic login
+        if (deviceInfo) {
+          await saveLoginState(phone, deviceInfo.deviceId);
+        }
+        
         navigation.replace('Main');
       } else {
         // OTP verification failed
@@ -37,8 +63,8 @@ export default function OtpScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verify OTP</Text>
-      <Text style={styles.subtitle}>Enter the 4-digit code sent to {phone}</Text>
+      <Text style={styles.title}>{t('verify_otp') as string}</Text>
+      <Text style={styles.subtitle}>{(t('otp_subtitle', { phone }) as string)}</Text>
       
       <TextInput
         style={styles.input}
@@ -57,7 +83,7 @@ export default function OtpScreen() {
         {loading ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Text style={styles.buttonText}>Verify OTP</Text>
+          <Text style={styles.buttonText}>{t('verify_otp') as string}</Text>
         )}
       </TouchableOpacity>
       

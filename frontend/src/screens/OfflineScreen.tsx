@@ -1,13 +1,15 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 export default function OfflineScreen() {
+  const { t } = useTranslation();
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Offline Mode</Text>
-      <Text>Showing cached results and recent searches. Check your connection.</Text>
+      <Text style={styles.title}>{t('offline_mode') as string}</Text>
+      <Text>{t('showing_cached') as string}</Text>
       <TouchableOpacity style={styles.button}>
-        <Text style={styles.buttonText}>Retry</Text>
+        <Text style={styles.buttonText}>{t('retry') as string}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -3,12 +3,15 @@ import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList, Modal, S
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { colors } from '@/theme/theme';
+import { useAppColors } from '@/theme/ThemeProvider';
 import { getResources } from '@/utils/api';
-import i18n from '../i18n';
+import { useTranslation } from 'react-i18next';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
+  const { t, i18n } = useTranslation();
+  const colors = useAppColors();
+  const styles = createStyles(colors);
   const [query, setQuery] = useState('');
   const [resources, setResources] = useState<any[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -64,14 +67,16 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.brand}><Text style={styles.heart}>❤</Text> JeevanPath</Text>
+        <Text style={[styles.brand,{color:colors.textPrimary}]}><Text style={[styles.heart,{color:colors.danger}]}>❤</Text> JeevanPath</Text>
         <View style={{flexDirection:'row', gap:16, alignItems:'center'}}>
           <Ionicons name="notifications-outline" size={26} color={colors.textPrimary} />
-          <Ionicons name="settings-outline" size={26} color={colors.textPrimary} />
+          <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
+            <Ionicons name="person-circle-outline" size={28} color={colors.textPrimary} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      <View style={styles.promo}>
+      <View style={[styles.promo,{backgroundColor: colors.card}] }>
         <View style={{flex:1}}>
           <Text style={styles.promoTitle}>HealthPlus</Text>
           <Text style={styles.promoKicker}>Clinic · Promoted</Text>
@@ -80,40 +85,40 @@ export default function HomeScreen() {
         <TouchableOpacity style={styles.bookBtn}><Text style={{color:'#fff', fontWeight:'700'}}>Book Now</Text></TouchableOpacity>
       </View>
 
-      <View style={styles.rowPill}><Text>📍 Location:</Text><Text style={styles.link}> New York City (Demo)</Text></View>
+      <View style={[styles.rowPill,{borderColor:colors.border}]}><Text style={{color:colors.textPrimary}}>📍 {t('location_label') as string}</Text><Text style={[styles.link,{color:colors.accent}]}> {t('demo_city') as string}</Text></View>
       <View style={styles.searchRow}>
-        <TextInput style={styles.searchInput} placeholder={i18n.t('search_placeholder') as string} value={query} onChangeText={setQuery} />
-        <TouchableOpacity style={styles.searchBtn}><Text style={{color:'#fff', fontWeight:'700'}}>Search</Text></TouchableOpacity>
+        <TextInput style={[styles.searchInput,{borderColor:colors.border, color:colors.textPrimary, backgroundColor: colors.card}]} placeholder={t('search_placeholder') as string} placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} />
+        <TouchableOpacity style={[styles.searchBtn,{backgroundColor: colors.primary}]}><Text style={{color:'#fff', fontWeight:'700'}}>{t('search') as string}</Text></TouchableOpacity>
       </View>
 
       <View style={styles.filtersRow}>
         <TouchableOpacity style={styles.filterPill} onPress={() => setFiltersOpen(true)}>
           <Text>
-            ⚙ Filters{useMemo(() => {
+            ⚙ {t('filters')}{useMemo(() => {
               let c = 0; if (selectedType) c++; if (openNow) c++; if (radiusKm) c++;
               return c ? ` (${c})` : '';
             }, [selectedType, openNow, radiusKm])}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>☰ List</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>◯◯ Map</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>➕ More</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.filterPill}><Text>☰ {t('list')}</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.filterPill}><Text>◯◯ {t('map')}</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.filterPill}><Text>➕ {t('more')}</Text></TouchableOpacity>
       </View>
 
-      <Text style={styles.resultsMeta}>{resources.length} resources found · Sorted by distance</Text>
+      <Text style={[styles.resultsMeta,{color:colors.muted}]}>{resources.length} resources</Text>
 
       <FlatList
         data={resources}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 80 }}
         renderItem={({ item }) => (
-          <View style={styles.card}>
+          <View style={[styles.card,{backgroundColor: colors.card, borderColor: colors.border}] }>
             <View style={{flexDirection:'row', justifyContent:'space-between'}}>
               <View style={{flex:1}}>
-                <Text style={styles.itemTitle}>{item.name}</Text>
+                <Text style={[styles.itemTitle,{color:colors.textPrimary}]}>{item.name}</Text>
                 <View style={{flexDirection:'row', gap:8, marginTop:4}}>
-                  <View style={styles.badgeMuted}><Text style={styles.badgeMutedText}>Verified</Text></View>
-                  {item.emergency && <View style={styles.badgeDanger}><Text style={styles.badgeDangerText}>Emergency</Text></View>}
+                  <View style={[styles.badgeMuted]}><Text style={[styles.badgeMutedText]}>{t('verified') as string}</Text></View>
+                  {item.emergency && <View style={styles.badgeDanger}><Text style={styles.badgeDangerText}>{t('emergency_badge') as string}</Text></View>}
                 </View>
               </View>
               <Text>🏥</Text>
@@ -126,14 +131,14 @@ export default function HomeScreen() {
               <Text style={{color:'#16a34a'}}>○ Open</Text>
             </View>
 
-            <Text style={[styles.address, {marginTop:10}]}>{item.address}</Text>
+              <Text style={[styles.address, {marginTop:10, color: colors.textSecondary}]}>{item.address}</Text>
 
             <View style={{marginTop:10}}>
               <View style={styles.badgeType}><Text style={styles.badgeTypeText}>{item.type}</Text></View>
             </View>
 
             <View style={{marginTop:10}}>
-              <Text style={{fontWeight:'700', color: colors.textPrimary}}>Services:</Text>
+              <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('services') as string}:</Text>
               <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
                 {['Emergency Care','Surgery','ICU','+2 more'].map(s => (
                   <View key={s} style={styles.servicePill}><Text style={styles.servicePillText}>{s}</Text></View>
@@ -142,7 +147,7 @@ export default function HomeScreen() {
             </View>
 
             <View style={{marginTop:10}}>
-              <Text style={{fontWeight:'700', color: colors.textPrimary}}>Languages Spoken:</Text>
+              <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('languages_spoken') as string}:</Text>
               <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
                 {['English','Spanish','Hindi'].map(l => (
                   <View key={l} style={styles.langPill}><Text style={styles.langPillText}>{l}</Text></View>
@@ -150,17 +155,17 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            <Text style={{color: colors.muted, marginTop:10}}>24/7</Text>
+            <Text style={{color: colors.muted, marginTop:10}}>{t('twenty_four_seven') as string}</Text>
 
             <View style={{flexDirection:'row', gap:12, marginTop:12}}>
-              <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:'#f1f5f9'}]} onPress={() => {
+              <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:colors.card, borderWidth:1, borderColor:colors.border}]} onPress={() => {
                 const mapsUrl = item.coords ? `https://www.google.com/maps/dir/?api=1&destination=${item.coords.lat},${item.coords.lng}` : `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.address || item.name)}`;
                 Linking.openURL(mapsUrl);
               }}>
-                <Text>🧭 Get Directions</Text>
+                <Text style={{color:colors.textPrimary}}>🧭 {t('directions') as string}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:'#0f172a'}]} onPress={() => item.phone && Linking.openURL(`tel:${item.phone}`)}>
-                <Text style={{color:'#fff'}}>📞 Call</Text>
+              <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:colors.primary}]} onPress={() => item.phone && Linking.openURL(`tel:${item.phone}`)}>
+                <Text style={{color:'#fff'}}>📞 {t('call') as string}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -280,7 +285,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   screen: { flex:1, backgroundColor: colors.background },
   header: { paddingHorizontal: 16, paddingBottom: 12, paddingTop: 48, flexDirection:'row', justifyContent:'space-between', alignItems:'center' },
   brand: { fontWeight:'800', fontSize:21, color: colors.textPrimary },
