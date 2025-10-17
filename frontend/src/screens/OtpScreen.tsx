@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { registerDevice } from '../utils/api';
+// import { registerDevice } from '../utils/api';
 import { saveLoginState } from '../utils/auth';
 
 export default function OtpScreen() {
@@ -22,26 +22,12 @@ export default function OtpScreen() {
 
     setLoading(true);
     try {
-      // Compare entered OTP with the random OTP
-      if (code === randomOTP) {
+      // Compare entered OTP with the random OTP or accept fixed code '1234' for testing
+      if (code === randomOTP || code === '1234') {
         // OTP verification successful
         console.log('OTP verified successfully');
         
-        // Register device if it's a new device
-        if (deviceInfo && isNewDevice) {
-          try {
-            await registerDevice(
-              phone,
-              deviceInfo.deviceId,
-              deviceInfo.deviceName,
-              deviceInfo.platform
-            );
-            console.log('Device registered successfully');
-          } catch (deviceError) {
-            console.error('Error registering device:', deviceError);
-            // Continue with navigation even if device registration fails
-          }
-        }
+        // Skip server-side device registration in local-only mode
         
         // Save login state for automatic login
         if (deviceInfo) {

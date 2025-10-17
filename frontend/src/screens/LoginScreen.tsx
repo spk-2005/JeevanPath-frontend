@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { checkDeviceRegistration } from '../utils/api';
+// import { checkDeviceRegistration } from '../utils/api';
 import { getDeviceInfo } from '../utils/device';
 import { saveLoginState, clearLoginState } from '../utils/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,43 +27,25 @@ export default function LoginScreen() {
     try {
       const formattedPhone = formatPhoneNumber(phone);
       const deviceInfo = await getDeviceInfo();
-      
-      // Check if device is already registered
-      const deviceCheck = await checkDeviceRegistration(
-        formattedPhone,
-        deviceInfo.deviceId,
-        deviceInfo.platform
-      );
 
-      if (deviceCheck.isRegistered && !deviceCheck.requiresOTP) {
-        // Device is registered, skip OTP and go directly to main screen
-        // Save login state for automatic login
-        await saveLoginState(formattedPhone, deviceInfo.deviceId);
-        Alert.alert(
-          'Welcome Back!',
-          `Welcome back to your ${deviceInfo.deviceName}`,
-          [{ text: 'Continue', onPress: () => navigation.replace('Main') }]
-        );
-      } else {
-        // Device not registered or new device, require OTP
-        const randomOTP = Math.floor(1000 + Math.random() * 9000).toString();
-        Alert.alert(
-          'Verification Code',
-          `Your 4-digit code is: ${randomOTP}`,
-          [{ 
-            text: 'Continue', 
-            onPress: () => navigation.navigate('OTP', { 
-              phone: formattedPhone, 
-              randomOTP,
-              deviceInfo,
-              isNewDevice: !deviceCheck.isRegistered
-            }) 
-          }]
-        );
-      }
+      // Local-only OTP flow: always generate and proceed without network calls
+      const randomOTP = Math.floor(1000 + Math.random() * 9000).toString();
+      Alert.alert(
+        'Verification Code',
+        `Your 4-digit code is: ${randomOTP}`,
+        [{ 
+          text: 'Continue', 
+          onPress: () => navigation.navigate('OTP', { 
+            phone: formattedPhone, 
+            randomOTP,
+            deviceInfo,
+            isNewDevice: true
+          }) 
+        }]
+      );
     } catch (e) {
-      console.error('Error checking device registration:', e);
-      Alert.alert('Error', 'Failed to check device registration. Please try again.');
+      console.error('Error preparing OTP flow:', e);
+      Alert.alert('Error', 'Failed to start OTP flow. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -6,14 +6,33 @@ import Constants from 'expo-constants';
 const extraUrl = (Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_URL
   || (Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_URL; // older Expo fallback
 const envUrl = (typeof process !== 'undefined' && (process as any).env?.EXPO_PUBLIC_API_URL) as string | undefined;
-// TEMP: Hardcode LAN IP to ensure real device can reach backend. Revert to env/extra once stable.
-const BASE_URL = 'http://192.168.157.169:4000';
+
+// Try to derive LAN host from Expo debugger/host when running in dev
+const guessedLan = (() => {
+  try {
+    const hostUri = (Constants as any)?.expoConfig?.hostUri || (Constants as any)?.manifest?.debuggerHost;
+    if (hostUri) {
+      const hostname = String(hostUri).split(':')[0];
+      return `http://${hostname}:4000`;
+    }
+  } catch {}
+  return undefined;
+})();
+
+// Safe defaults for emulators/simulators
+const defaultUrl = Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
+
+// Prefer guessed Expo host when running in Expo Go on a physical device
+const inExpoGo = (Constants as any)?.appOwnership === 'expo';
+const BASE_URL = inExpoGo
+  ? (guessedLan || envUrl || extraUrl || defaultUrl)
+  : (envUrl || extraUrl || guessedLan || defaultUrl);
 
 // Debug: log resolved base URL once
 // Note: will print in Metro/Expo logs
 // Use this to confirm the device is targeting the correct server
 // eslint-disable-next-line no-console
-console.log('[API] baseURL =', BASE_URL, '| source =', envUrl ? 'env' : (extraUrl ? 'app.json extra' : (Platform.OS === 'ios' ? 'ios-default' : 'android-emulator-default')));
+console.log('[API] baseURL =', BASE_URL, '| source =', inExpoGo ? (guessedLan ? 'expo-host' : 'expo-default') : (envUrl ? 'env' : (extraUrl ? 'app.json extra' : (guessedLan ? 'expo-host' : (Platform.OS === 'ios' ? 'ios-default' : 'android-emulator-default')))));
 
 export const api = axios.create({
   baseURL: BASE_URL,
