@@ -23,7 +23,14 @@ interface DemoResult {
   suggestions: string[];
 }
 
-export default function VoiceSearchDemo() {
+interface VoiceSearchDemoProps {
+  onSearch?: (text: string, language?: string) => void;
+  language?: string;
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+export default function VoiceSearchDemo({ onSearch, language = 'en-IN', disabled = false, placeholder = 'Tap to speak' }: VoiceSearchDemoProps) {
   const colors = useAppColors();
   const styles = createStyles(colors);
   const [results, setResults] = useState<DemoResult[]>([]);
@@ -82,6 +89,11 @@ export default function VoiceSearchDemo() {
   };
 
   const runDemoQuery = async (query: { text: string; language: string }) => {
+    if (onSearch) {
+      // If parent provided a handler (e.g., Search screen), delegate search to it
+      onSearch(query.text, query.language);
+      return;
+    }
     setIsProcessing(true);
     await handleVoiceSearch(query.text, query.language);
     setIsProcessing(false);
@@ -135,16 +147,18 @@ export default function VoiceSearchDemo() {
         </Text>
       </View>
 
-      {/* Voice Search Component */}
-      <View style={styles.voiceSection}>
-        <Text style={styles.sectionTitle}>Live Voice Search</Text>
-        <VoiceSearch
-          onSearch={handleVoiceSearch}
-          language="en-IN"
-          disabled={isProcessing}
-          placeholder="Tap to speak in any language"
-        />
-      </View>
+      {/* Voice Search Component (may not be available in Expo Go) */}
+      {!onSearch && (
+        <View style={styles.voiceSection}>
+          <Text style={styles.sectionTitle}>Live Voice Search</Text>
+          <VoiceSearch
+            onSearch={handleVoiceSearch}
+            language={language}
+            disabled={isProcessing || disabled}
+            placeholder={placeholder}
+          />
+        </View>
+      )}
 
       {/* Demo Queries */}
       <View style={styles.demoSection}>
