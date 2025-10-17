@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert } from 'reac
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { setApiBaseUrlOverride } from '@/utils/api';
 import i18n from '@/i18n';
 
 export default function ProfileScreen() {
@@ -12,8 +11,7 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [language, setLanguage] = useState('en');
-  const [connectivity, setConnectivity] = useState<{ ok: boolean; baseURL: string; error?: string } | null>(null);
-  const [apiBaseUrl, setApiBaseUrl] = useState('');
+  
 
   useEffect(() => {
     (async () => {
@@ -27,8 +25,7 @@ export default function ProfileScreen() {
           setLanguage(p.language || 'en');
           
         }
-        const savedApi = await AsyncStorage.getItem('apiBaseUrl');
-        if (savedApi) setApiBaseUrl(savedApi);
+        
       } catch {}
     })();
   }, []);
@@ -43,13 +40,7 @@ export default function ProfileScreen() {
     }
   };
 
-  // Removed backend save per request
-
-  const testConnectivity = async () => {
-    const res = await pingApi();
-    setConnectivity(res);
-    if (!res.ok) Alert.alert('API Unreachable', `Base URL: ${res.baseURL}\nError: ${res.error || 'Unknown'}`);
-  };
+  // Removed backend save and connectivity tooling per request
   return (
     <View style={styles.container}>
       <View style={styles.topBar}>
@@ -101,7 +92,11 @@ const styles = StyleSheet.create({
   label: { fontWeight: '700', marginBottom: 6 },
   input: { borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: '#fff' },
   btn: { marginTop: 16, backgroundColor: '#0f172a', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
-  btnText: { color: '#fff', fontWeight: '700' }
+  btnText: { color: '#fff', fontWeight: '700' },
+  langBtn: { backgroundColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  langBtnActive: { backgroundColor: '#c7d2fe' },
+  langText: { color: '#0f172a', fontWeight: '700', fontSize: 12 },
+  langTextActive: { color: '#3730a3' }
 });
 
 
