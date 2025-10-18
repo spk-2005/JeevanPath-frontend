@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList, Modal, ScrollView, Switch, Linking, SafeAreaView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList, Modal, ScrollView, Switch, Linking } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -30,11 +31,12 @@ export default function HomeScreen() {
   const [wheelchair, setWheelchair] = useState(false);
   const [nearbyMe, setNearbyMe] = useState(true);
   const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'name'>('distance');
-  const [currentLocation, setCurrentLocation] = useState('Getting location...');
+  const [currentLocation, setCurrentLocation] = useState('JNTUH Campus, Hyderabad');
   const [locationPickerOpen, setLocationPickerOpen] = useState(false);
   const [locationSearchOpen, setLocationSearchOpen] = useState(false);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
-  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  // Set default location to JNTUH for testing
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>({ lat: 17.5449, lng: 78.5718 });
   const [searchQuery, setSearchQuery] = useState('');
 
   // Handle voice search parameters from navigation
@@ -44,14 +46,22 @@ export default function HomeScreen() {
       
       console.log('Voice search params received:', { voiceQuery, filterParams });
       
-      // Set search query
-      if (voiceQuery) {
-        setQuery(voiceQuery);
-        setSearchQuery(voiceQuery);
-      }
-      
       // Apply filters from voice command
       if (filterParams) {
+        // Set search query only if explicitly provided in filterParams
+        if (filterParams.hasOwnProperty('searchQuery')) {
+          // Use the searchQuery from filterParams (could be empty string for sorting commands)
+          setQuery(filterParams.searchQuery || '');
+          setSearchQuery(filterParams.searchQuery || '');
+        } else if (voiceQuery && !filterParams.sortBy && !filterParams.showAll) {
+          // Only use voiceQuery for non-sorting, non-showAll commands
+          setQuery(voiceQuery);
+          setSearchQuery(voiceQuery);
+        } else if (filterParams.sortBy || filterParams.showAll) {
+          // For sorting or showAll commands, clear the search query
+          setQuery('');
+          setSearchQuery('');
+        }
         if (filterParams.type) {
           setSelectedType(filterParams.type);
         }
@@ -67,6 +77,17 @@ export default function HomeScreen() {
         }
         if (filterParams.near) {
           setNearbyMe(true);
+        }
+        // Handle sorting parameters from voice command
+        if (filterParams.sortBy) {
+          console.log('Voice command setting sortBy to:', filterParams.sortBy);
+          setSortBy(filterParams.sortBy);
+        }
+        // Handle show all resources command
+        if (filterParams.showAll) {
+          setSelectedType(undefined); // Clear type filter to show all
+          setQuery(''); // Clear search query to show all
+          setSearchQuery('');
         }
       }
       
@@ -101,9 +122,14 @@ export default function HomeScreen() {
       setUserLocation(location);
       const locationName = await getLocationName(coords.latitude, coords.longitude);
       setCurrentLocation(locationName);
+      console.log('HomeScreen: Got GPS location:', location);
     } catch (error) {
       console.warn('Failed to get current location:', error);
-      setCurrentLocation('Location unavailable');
+      // Fallback to JNTUH location for testing
+      const jntuhLocation = { lat: 17.5449, lng: 78.5718 };
+      setUserLocation(jntuhLocation);
+      setCurrentLocation('JNTUH Campus, Hyderabad');
+      console.log('HomeScreen: Using fallback JNTUH location:', jntuhLocation);
     }
   };
 
@@ -111,33 +137,68 @@ export default function HomeScreen() {
     (async () => {
       try {
         let params: any = { q: query || undefined, type: selectedType ? selectedType.toLowerCase() : undefined, openNow: openNow || undefined, minRating, services, languages, insurance, transportation, wheelchair, sortBy };
+        
+        console.log('HomeScreen: Loading resources with nearbyMe:', nearbyMe, 'userLocation:', userLocation);
+        
         if (nearbyMe || radiusKm) {
-          const { coords } = await Location.getCurrentPositionAsync({});
-          params = { ...params, lat: coords.latitude, lng: coords.longitude, radiusMeters: radiusKm ? radiusKm * 1000 : 5000 };
+          // Use selected location if available, otherwise get current GPS location
+          if (userLocation) {
+            params = { ...params, lat: userLocation.lat, lng: userLocation.lng, radiusMeters: radiusKm ? radiusKm * 1000 : 15000 };
+            console.log('HomeScreen: Using selected location:', userLocation, 'radius:', radiusKm ? radiusKm * 1000 : 15000);
+          } else {
+            try {
+              const { coords } = await Location.getCurrentPositionAsync({});
+              params = { ...params, lat: coords.latitude, lng: coords.longitude, radiusMeters: radiusKm ? radiusKm * 1000 : 15000 };
+              console.log('HomeScreen: Using GPS location:', coords.latitude, coords.longitude, 'radius:', radiusKm ? radiusKm * 1000 : 15000);
+            } catch (locationError) {
+              console.warn('Failed to get location for search:', locationError);
+              // Continue without location-based search
+            }
+          }
         }
+        
+        console.log('HomeScreen: API params:', params);
         const data = await getResources(params);
+        console.log('HomeScreen: Received resources:', data?.length || 0);
+        
         const mapped = (data || []).map((r: any) => ({
           id: r._id || String(Math.random()),
           name: r.name,
           type: r.type || 'Hospital',
-          distance: '—',
-          time: '—',
+          distance: r.distanceFromUser ? `${r.distanceFromUser}km` : '—',
+          distanceValue: r.distanceFromUser || 0,
+          time: r.distanceFromUser ? `${Math.ceil(r.distanceFromUser * 2)}min` : '—', // Estimate 2 min per km
           rating: r.rating ? `${r.rating}` : '—',
-          status: openNow ? 'Open' : '—',
+          status: r.is24Hours ? 'Open 24/7' : (openNow ? 'Open' : '—'),
           emergency: r.emergency || false,
           address: r.address || '—',
           phone: r.contact || undefined,
-          coords: r.location && Array.isArray(r.location.coordinates) ? { lat: r.location.coordinates[1], lng: r.location.coordinates[0] } : undefined
+          coords: r.location && Array.isArray(r.location.coordinates) ? { lat: r.location.coordinates[1], lng: r.location.coordinates[0] } : undefined,
+          services: r.services || [],
+          languages: r.languages || [],
+          wheelchairAccessible: r.wheelchairAccessible || false,
+          parkingAvailable: r.parkingAvailable || false,
+          is24Hours: r.is24Hours || false
         }));
         // mark saved flags
         const withSavedFlags = await Promise.all(mapped.map(async (m: {id: string, [key: string]: any}) => ({ ...m, __saved: await isResourceSaved(m.id) })));
-        setResources(withSavedFlags);
+        
+        // Filter by distance if nearbyMe is active and we have location data
+        let filteredResources = withSavedFlags;
+        if (nearbyMe && userLocation && radiusKm) {
+          filteredResources = withSavedFlags.filter(resource => {
+            return resource.distanceValue <= radiusKm;
+          });
+          console.log(`HomeScreen: Filtered to ${filteredResources.length} resources within ${radiusKm}km`);
+        }
+        
+        setResources(filteredResources);
       } catch (err) {
         console.warn('Failed to load resources', err);
         setResources([]);
       }
     })();
-  }, [query, selectedType, openNow, radiusKm, minRating, services, languages, insurance, transportation, wheelchair, nearbyMe, sortBy]);
+  }, [query, selectedType, openNow, radiusKm, minRating, services, languages, insurance, transportation, wheelchair, nearbyMe, sortBy, userLocation]);
 
   useEffect(() => {
     (async () => {
@@ -204,7 +265,11 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      <Text style={[styles.resultsMeta,{color:colors.muted}]}>{resources.length} resources</Text>
+      <Text style={[styles.resultsMeta,{color:colors.muted}]}>
+        {resources.length} resources
+        {nearbyMe && userLocation && radiusKm && ` within ${radiusKm}km`}
+        {nearbyMe && userLocation && !radiusKm && ` within 15km`}
+      </Text>
 
       <FlatList
         data={resources}
@@ -224,10 +289,14 @@ export default function HomeScreen() {
             </View>
 
             <View style={[styles.metaRow, {marginTop:10}]}> 
-              <Text>📏 {item.distance}</Text>
+              <Text style={{color: colors.primary, fontWeight:'600'}}>📍 {item.distance}</Text>
               <Text>· ⏱ {item.time}</Text>
-              <Text>· ⭐ {item.rating} <Text style={{color: '#64748b'}}>(234 reviews)</Text></Text>
-              <Text style={{color:'#16a34a'}}>○ Open</Text>
+              <Text>· ⭐ {item.rating}</Text>
+              {item.is24Hours ? (
+                <Text style={{color:'#16a34a'}}>· 🕐 24/7</Text>
+              ) : (
+                <Text style={{color:'#16a34a'}}>· ○ Open</Text>
+              )}
             </View>
 
               <Text style={[styles.address, {marginTop:10, color: colors.textSecondary}]}>{item.address}</Text>
@@ -236,25 +305,45 @@ export default function HomeScreen() {
               <View style={styles.badgeType}><Text style={styles.badgeTypeText}>{item.type}</Text></View>
             </View>
 
-            <View style={{marginTop:10}}>
-              <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('services') as string}:</Text>
-              <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
-                {['Emergency Care','Surgery','ICU','+2 more'].map(s => (
-                  <View key={s} style={styles.servicePill}><Text style={styles.servicePillText}>{s}</Text></View>
-                ))}
+            {item.services && item.services.length > 0 && (
+              <View style={{marginTop:10}}>
+                <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('services') as string}:</Text>
+                <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
+                  {item.services.slice(0, 3).map((s: string) => (
+                    <View key={s} style={styles.servicePill}><Text style={styles.servicePillText}>{s}</Text></View>
+                  ))}
+                  {item.services.length > 3 && (
+                    <View style={styles.servicePill}><Text style={styles.servicePillText}>+{item.services.length - 3} more</Text></View>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
 
-            <View style={{marginTop:10}}>
-              <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('languages_spoken') as string}:</Text>
-              <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
-                {['English','Spanish','Hindi'].map(l => (
-                  <View key={l} style={styles.langPill}><Text style={styles.langPillText}>{l}</Text></View>
-                ))}
+            {item.languages && item.languages.length > 0 && (
+              <View style={{marginTop:10}}>
+                <Text style={{fontWeight:'700', color: colors.textPrimary}}>{t('languages_spoken') as string}:</Text>
+                <View style={{flexDirection:'row', flexWrap:'wrap', gap:8, marginTop:6}}>
+                  {item.languages.slice(0, 3).map((l: string) => (
+                    <View key={l} style={styles.langPill}><Text style={styles.langPillText}>{l}</Text></View>
+                  ))}
+                  {item.languages.length > 3 && (
+                    <View style={styles.langPill}><Text style={styles.langPillText}>+{item.languages.length - 3} more</Text></View>
+                  )}
+                </View>
               </View>
-            </View>
+            )}
 
-            <Text style={{color: colors.muted, marginTop:10}}>{t('twenty_four_seven') as string}</Text>
+            <View style={{flexDirection:'row', alignItems:'center', gap:16, marginTop:10}}>
+              {item.is24Hours && (
+                <Text style={{color: '#16a34a', fontWeight:'600'}}>🕐 24/7</Text>
+              )}
+              {item.wheelchairAccessible && (
+                <Text style={{color: colors.primary, fontWeight:'600'}}>♿ Accessible</Text>
+              )}
+              {item.parkingAvailable && (
+                <Text style={{color: colors.textSecondary, fontWeight:'600'}}>🅿️ Parking</Text>
+              )}
+            </View>
 
             <View style={{flexDirection:'row', gap:12, marginTop:12}}>
               <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:colors.card, borderWidth:1, borderColor:colors.border}]} onPress={() => {
@@ -270,6 +359,7 @@ export default function HomeScreen() {
                 accessibilityLabel={item.__saved ? 'Unsave resource' : 'Save resource'}
                 style={[styles.ctaBtn, {backgroundColor: colors.card, borderWidth:1, borderColor: colors.border}]}
                 onPress={async () => {
+                  console.log('HomeScreen: Toggling save for resource:', item.name, 'Current saved:', item.__saved);
                   const nowSaved = await toggleSaved({
                     id: item.id,
                     name: item.name,
@@ -279,6 +369,7 @@ export default function HomeScreen() {
                     rating: item.rating,
                     coords: item.coords
                   });
+                  console.log('HomeScreen: Resource now saved:', nowSaved);
                   setResources(rs => rs.map(r => r.id === item.id ? { ...r, __saved: nowSaved } : r));
                 }}
               >
@@ -319,8 +410,8 @@ export default function HomeScreen() {
               </View>
 
               <Text style={styles.sectionTitle}>Search Radius</Text>
-              <View style={{flexDirection:'row', gap:8}}>
-                {[1,5,10,25].map(km => (
+              <View style={{flexDirection:'row', flexWrap:'wrap', gap:8}}>
+                {[2,5,10,15,25,50].map(km => (
                   <TouchableOpacity key={km} onPress={() => setRadiusKm(radiusKm===km?undefined:km)} style={[styles.choicePill, radiusKm===km && styles.choicePillSelected]}>
                     <Text style={[styles.choiceText, radiusKm===km && styles.choiceTextSelected]}>{km} km</Text>
                   </TouchableOpacity>
@@ -528,24 +619,31 @@ export default function HomeScreen() {
               />
               <FlatList
                 data={searchQuery ? [
-                  {id: '1', name: `${searchQuery}, Telangana`, description: 'Search result'},
-                  {id: '2', name: `${searchQuery} Central, Maharashtra`, description: 'Area in Mumbai'},
-                  {id: '3', name: `${searchQuery} District, Delhi`, description: 'Area in Delhi'},
-                  {id: '4', name: `${searchQuery} Layout, Bangalore`, description: 'Area in Bangalore'},
-                  {id: '5', name: `${searchQuery} Nagar, Chennai`, description: 'Area in Chennai'}
+                  {id: '1', name: `${searchQuery}, Telangana`, description: 'Search result', coords: {lat: 16.2160, lng: 80.8467}}, // Guntur coordinates as example
+                  {id: '2', name: `${searchQuery} Central, Maharashtra`, description: 'Area in Mumbai', coords: {lat: 19.0760, lng: 72.8777}},
+                  {id: '3', name: `${searchQuery} District, Delhi`, description: 'Area in Delhi', coords: {lat: 28.7041, lng: 77.1025}},
+                  {id: '4', name: `${searchQuery} Layout, Bangalore`, description: 'Area in Bangalore', coords: {lat: 12.9716, lng: 77.5946}},
+                  {id: '5', name: `${searchQuery} Nagar, Chennai`, description: 'Area in Chennai', coords: {lat: 13.0827, lng: 80.2707}}
                 ] : [
-                  {id: '1', name: 'Hyderabad, Telangana', description: 'City in India'},
-                  {id: '2', name: 'Mumbai, Maharashtra', description: 'City in India'},
-                  {id: '3', name: 'Delhi, India', description: 'Capital of India'},
-                  {id: '4', name: 'Bangalore, Karnataka', description: 'Tech hub of India'},
-                  {id: '5', name: 'Chennai, Tamil Nadu', description: 'City in South India'}
+                  {id: '1', name: 'Hyderabad, Telangana', description: 'City in India', coords: {lat: 17.3850, lng: 78.4867}},
+                  {id: '2', name: 'Mumbai, Maharashtra', description: 'City in India', coords: {lat: 19.0760, lng: 72.8777}},
+                  {id: '3', name: 'Delhi, India', description: 'Capital of India', coords: {lat: 28.7041, lng: 77.1025}},
+                  {id: '4', name: 'Bangalore, Karnataka', description: 'Tech hub of India', coords: {lat: 12.9716, lng: 77.5946}},
+                  {id: '5', name: 'Chennai, Tamil Nadu', description: 'City in South India', coords: {lat: 13.0827, lng: 80.2707}},
+                  {id: '6', name: 'Guntur, Andhra Pradesh', description: 'City in Andhra Pradesh', coords: {lat: 16.2160, lng: 80.8467}},
+                  {id: '7', name: 'Vijayawada, Andhra Pradesh', description: 'City in Andhra Pradesh', coords: {lat: 16.5062, lng: 80.6480}},
+                  {id: '8', name: 'Visakhapatnam, Andhra Pradesh', description: 'Port city in Andhra Pradesh', coords: {lat: 17.6868, lng: 83.2185}}
                 ]}
                 keyExtractor={item => item.id}
                 renderItem={({item}) => (
                   <TouchableOpacity 
                     style={styles.locationOption}
                     onPress={() => {
+                      console.log('Location selected:', item.name, 'Coordinates:', item.coords);
                       setCurrentLocation(item.name);
+                      if (item.coords) {
+                        setUserLocation(item.coords);
+                      }
                       setLocationSearchOpen(false);
                     }}
                   >
@@ -596,6 +694,9 @@ export default function HomeScreen() {
             <TouchableOpacity 
               style={[styles.actionBtn, {backgroundColor: colors.primary, marginTop: 16}]}
               onPress={() => {
+                // Set the coordinates to the map center (you can make this more sophisticated with marker dragging)
+                const mapLocation = {lat: 17.3850, lng: 78.4867}; // Default to Hyderabad, can be made dynamic
+                setUserLocation(mapLocation);
                 setCurrentLocation('Selected Map Location');
                 setMapPickerOpen(false);
               }}

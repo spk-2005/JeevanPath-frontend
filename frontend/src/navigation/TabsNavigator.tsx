@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import Constants from 'expo-constants';
 import HomeScreen from '@/screens/HomeScreen';
 import MapResultsScreen from '@/screens/MapResultsScreen';
 import SettingsScreen from '@/screens/SettingsScreen';
@@ -56,6 +57,44 @@ export default function TabsNavigator() {
           }} 
         />
         <Tab.Screen 
+          name="Voice"
+          children={() => null}
+          options={{ 
+            tabBarIcon: ({ color, focused }) => (
+              <TouchableOpacity
+                onPress={() => setVoiceSearchVisible(true)}
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: 28,
+                  backgroundColor: '#2563eb',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginBottom: 10,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 8,
+                }}
+              >
+                <Ionicons 
+                  name={Constants?.appOwnership === 'expo' ? "chatbox" : "mic"} 
+                  size={24} 
+                  color="white" 
+                />
+              </TouchableOpacity>
+            ),
+            tabBarLabel: Constants?.appOwnership === 'expo' ? 'Chat' : 'Voice'
+          }} 
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              setVoiceSearchVisible(true);
+            },
+          }}
+        />
+        <Tab.Screen 
           name="Saved" 
           component={SavedScreen} 
           options={{ 
@@ -73,30 +112,7 @@ export default function TabsNavigator() {
         />
       </Tab.Navigator>
 
-      {/* Floating Voice Search Button */}
-      <TouchableOpacity
-        style={{
-          position: 'absolute',
-          bottom: 90, // Above the tab bar
-          right: 20,
-          width: 60,
-          height: 60,
-          borderRadius: 30,
-          backgroundColor: '#2563eb',
-          justifyContent: 'center',
-          alignItems: 'center',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 8,
-          elevation: 8,
-        }}
-        onPress={() => setVoiceSearchVisible(true)}
-      >
-        <Ionicons name="mic" size={28} color="white" />
-      </TouchableOpacity>
-
-      {/* Voice Search Popup */}
+      {/* Voice Assistant - Always use VoiceSearchPopup for now */}
       <VoiceSearchPopup 
         visible={voiceSearchVisible} 
         onClose={() => setVoiceSearchVisible(false)}

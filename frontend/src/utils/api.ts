@@ -25,13 +25,13 @@ const guessedLan = (() => {
         return `http://${hostname}:4000`;
       }
     }
-  } catch {}
+  } catch { }
   return undefined;
 })();
 
 // Safe defaults for emulators/simulators
 // Override Android fallback to your hosted backend
-const defaultUrl = Platform.OS === 'android' ? 'https://jeevanpath-frontend.onrender.com' : 'https://jeevanpath-frontend.onrender.com';
+const defaultUrl = Platform.OS === 'android' ? 'http://192.168.137.140:4000' : 'http://192.168.137.140:4000';
 
 // Prefer the Expo/Metro host on-device to avoid 10.0.2.2 on physical devices
 let CURRENT_BASE_URL = (extraUrl || envUrl || guessedLan || defaultUrl);
@@ -88,7 +88,7 @@ export async function loadApiBaseUrlOverride(): Promise<string | null> {
         return CURRENT_BASE_URL;
       }
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -165,6 +165,63 @@ export async function getVoiceAnalytics(userId?: string) {
   const res = await api.get('/api/nlp/analytics', { params: { userId } });
   // eslint-disable-next-line no-console
   console.log('[API] GET /api/nlp/analytics response =', res.data);
+  return res.data;
+}
+
+// Emergency Services API
+export async function triggerEmergencyAlert(alertData: {
+  userId: string;
+  emergencyType: 'medical' | 'accident' | 'blood' | 'pharmacy';
+  location: { lat: number; lng: number };
+  message?: string;
+}) {
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/emergency/alert', alertData);
+  const res = await api.post('/api/emergency/alert', alertData);
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/emergency/alert response =', res.data);
+  return res.data;
+}
+
+export async function getUserEmergencyAlerts(userId: string, status?: string, limit?: number) {
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/emergency/user-alerts/' + userId, { status, limit });
+  const res = await api.get(`/api/emergency/user-alerts/${userId}`, { 
+    params: { status, limit } 
+  });
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/emergency/user-alerts response =', res.data);
+  return res.data;
+}
+
+export async function markAlertAsRead(alertId: string) {
+  // eslint-disable-next-line no-console
+  console.log('[API] PUT /api/emergency/user-alerts/' + alertId + '/read');
+  const res = await api.put(`/api/emergency/user-alerts/${alertId}/read`);
+  // eslint-disable-next-line no-console
+  console.log('[API] PUT /api/emergency/user-alerts/read response =', res.data);
+  return res.data;
+}
+
+export async function respondToEmergencyAlert(alertId: string, response: {
+  canRespond: boolean;
+  estimatedArrival?: string;
+  responseMessage?: string;
+}) {
+  // eslint-disable-next-line no-console
+  console.log('[API] PUT /api/emergency/user-alerts/' + alertId + '/respond', response);
+  const res = await api.put(`/api/emergency/user-alerts/${alertId}/respond`, response);
+  // eslint-disable-next-line no-console
+  console.log('[API] PUT /api/emergency/user-alerts/respond response =', res.data);
+  return res.data;
+}
+
+export async function checkServiceProvider(phone: string) {
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/emergency/check-provider/' + phone);
+  const res = await api.get(`/api/emergency/check-provider/${encodeURIComponent(phone)}`);
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/emergency/check-provider response =', res.data);
   return res.data;
 }
 

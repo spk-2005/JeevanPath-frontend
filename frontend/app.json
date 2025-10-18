@@ -37,7 +37,7 @@
       "expo-font"
     ],
     "extra": {
-      "EXPO_PUBLIC_API_URL": "https://jeevanpath-frontend.onrender.com"
+      "EXPO_PUBLIC_API_URL": "192.168.137.140:4000"
     }
   }
 }

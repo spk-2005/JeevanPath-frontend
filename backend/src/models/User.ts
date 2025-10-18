@@ -14,6 +14,10 @@ export interface UserDocument extends Document {
   phone?: string;
   language?: string;
   devices: DeviceInfo[];
+  // Service provider fields (assigned by admin)
+  assignedResourceId?: string; // Resource they are assigned to manage
+  isServiceProvider?: boolean; // Whether this user is a service provider
+  emergencyNotificationsEnabled?: boolean; // Whether they want emergency notifications
   createdAt: Date;
 }
 
@@ -31,6 +35,10 @@ const userSchema = new Schema<UserDocument>({
   phone: String,
   language: { type: String, default: 'en' },
   devices: [deviceInfoSchema],
+  // Service provider fields (assigned by admin)
+  assignedResourceId: String, // Resource they are assigned to manage
+  isServiceProvider: { type: Boolean, default: false }, // Whether this user is a service provider
+  emergencyNotificationsEnabled: { type: Boolean, default: true }, // Whether they want emergency notifications
   createdAt: { type: Date, default: Date.now }
 });
 

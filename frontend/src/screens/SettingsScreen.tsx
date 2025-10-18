@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, Switch, StyleSheet, TouchableOpacity, ScrollView, Linking, Alert, Modal } from 'react-native';
+import { View, Text, Switch, StyleSheet, TouchableOpacity, ScrollView, Linking, Alert, Modal, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { clearLoginState } from '../utils/auth';
 import ContactFormScreen from '@/screens/ContactFormScreen';
+import { triggerEmergencyAlert } from '@/utils/api';
+import * as Location from 'expo-location';
 
 export default function SettingsScreen() {
   const { t } = useTranslation();
@@ -18,6 +20,8 @@ export default function SettingsScreen() {
   const [lang, setLang] = useState<'en' | 'hi' | 'te'>(i18n.language as any || 'en');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [emergencyLoading, setEmergencyLoading] = useState(false);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const navigation = useNavigation<any>();
 
   const changeLang = (code: 'en' | 'hi' | 'te') => {
@@ -27,6 +31,71 @@ export default function SettingsScreen() {
   };
 
   const langLabel = useMemo(() => ({ en: 'English', hi: 'हिन्दी', te: 'తెలుగు' }[lang]), [lang]);
+
+  const handleEmergencyAlert = async () => {
+    try {
+      setEmergencyLoading(true);
+      
+      // Get user location with fallback to JNTUH
+      let userLocation;
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const location = await Location.getCurrentPositionAsync({});
+          userLocation = {
+            lat: location.coords.latitude,
+            lng: location.coords.longitude
+          };
+          console.log('Emergency: Using GPS location:', userLocation);
+        } else {
+          throw new Error('Location permission not granted');
+        }
+      } catch (locationError) {
+        // Fallback to JNTUH location for testing
+        userLocation = { lat: 17.5449, lng: 78.5718 };
+        console.log('Emergency: Using fallback JNTUH location:', userLocation);
+      }
+      
+      // Get user ID from storage (you might need to adjust this based on your auth system)
+      const userId = await AsyncStorage.getItem('userId') || 'demo-user-123';
+      
+      // Trigger emergency alert
+      const result = await triggerEmergencyAlert({
+        userId,
+        emergencyType: 'medical',
+        location: userLocation,
+        message: 'Emergency assistance needed - triggered from app settings'
+      });
+      
+      if (result.success) {
+        Alert.alert(
+          '🚨 Emergency Calls Initiated!',
+          `Calling ${result.data.providersNotified} nearby service providers now!\n\n` +
+          `📞 Providers being contacted:\n` +
+          `• ${result.data.nearbyResourcesCount} healthcare facilities found\n` +
+          `• Emergency calls sent to medical staff\n` +
+          `• ${result.data.contactsNotified} emergency contacts notified\n\n` +
+          '🚑 Help is on the way! Stay calm and wait for assistance.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        throw new Error(result.error || 'Failed to send emergency alert');
+      }
+      
+    } catch (error: any) {
+      console.error('Emergency alert error:', error);
+      Alert.alert(
+        'Emergency Alert Failed',
+        error.message || 'Could not send emergency alert. Please try calling emergency services directly.',
+        [
+          { text: 'Call 108', onPress: () => Linking.openURL('tel:108') },
+          { text: 'OK' }
+        ]
+      );
+    } finally {
+      setEmergencyLoading(false);
+    }
+  };
 
   // Dynamic styles based on theme
   const dynamicStyles = {
@@ -262,6 +331,21 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, dynamicStyles.sectionTitle]}>Service Providers</Text>
 
+          {/* Emergency Alerts Button */}
+          <TouchableOpacity
+            style={[styles.registrationCard, dynamicStyles.registrationButton]}
+            onPress={() => navigation.navigate('EmergencyAlerts')}
+          >
+            <View style={styles.registrationContent}>
+              <Ionicons name="medical" size={28} color={dark ? '#ef4444' : '#dc2626'} />
+              <View style={styles.registrationText}>
+                <Text style={[styles.registrationTitle, dynamicStyles.settingLabel]}>Emergency Alerts</Text>
+                <Text style={[styles.registrationSubtitle, dynamicStyles.settingDescription]}>View and respond to emergency notifications</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color={dark ? '#60a5fa' : '#2563eb'} />
+          </TouchableOpacity>
+
           {/* Registration Button */}
           <TouchableOpacity
             style={[styles.registrationCard, dynamicStyles.registrationButton]}
@@ -309,24 +393,21 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={[styles.contactCard, dynamicStyles.contactCard, dynamicStyles.emergencyCard]}
-            onPress={() => {
-              Alert.alert(
-                'Emergency Contact',
-                'For urgent medical assistance, please call emergency services.',
-                [
-                  { text: 'Call 108 (Emergency)', onPress: () => Linking.openURL('tel:108') },
-                  { text: 'Call 102 (Ambulance)', onPress: () => Linking.openURL('tel:102') },
-                  { text: 'Cancel', style: 'cancel' }
-                ]
-              );
-            }}
+            onPress={() => setShowEmergencyModal(true)}
+            disabled={emergencyLoading}
           >
             <View style={[styles.contactIconContainer, dynamicStyles.emergencyIconContainer]}>
-              <Ionicons name="medical" size={28} color="#ef4444" />
+              {emergencyLoading ? (
+                <ActivityIndicator size="small" color="#ef4444" />
+              ) : (
+                <Ionicons name="medical" size={28} color="#ef4444" />
+              )}
             </View>
             <View style={styles.contactContent}>
               <Text style={[styles.contactTitle, dynamicStyles.contactTitle]}>Emergency Services</Text>
-              <Text style={[styles.contactSubtitle, dynamicStyles.contactSubtitle]}>Call 108 or 102 for emergencies</Text>
+              <Text style={[styles.contactSubtitle, dynamicStyles.contactSubtitle]}>
+                {emergencyLoading ? 'Sending alert...' : 'Alert nearby providers or call 108/102'}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
           </TouchableOpacity>
@@ -346,6 +427,84 @@ export default function SettingsScreen() {
         onRequestClose={() => setShowContactForm(false)}
       >
         <ContactFormScreen onClose={() => setShowContactForm(false)} />
+      </Modal>
+
+      {/* Emergency Alert Modal */}
+      <Modal
+        visible={showEmergencyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEmergencyModal(false)}
+      >
+        <TouchableOpacity 
+          style={styles.emergencyModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowEmergencyModal(false)}
+        >
+          <TouchableOpacity 
+            style={[styles.emergencyModalContent, dynamicStyles.card]}
+            activeOpacity={1}
+            onPress={() => {}} // Prevent closing when tapping inside modal
+          >
+            <View style={styles.emergencyModalHeader}>
+              <Ionicons name="medical" size={32} color="#ef4444" />
+              <Text style={[styles.emergencyModalTitle, dynamicStyles.settingLabel]}>🚨 Emergency Alert</Text>
+            </View>
+            
+            <Text style={[styles.emergencyModalDescription, dynamicStyles.settingDescription]}>
+              This will notify nearby healthcare providers about your emergency. Choose an option:
+            </Text>
+            
+            <View style={styles.emergencyModalButtons}>
+              <TouchableOpacity
+                style={[styles.emergencyButton, styles.alertButton]}
+                onPress={() => {
+                  setShowEmergencyModal(false);
+                  handleEmergencyAlert();
+                }}
+                disabled={emergencyLoading}
+              >
+                {emergencyLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="notifications" size={20} color="#fff" />
+                )}
+                <Text style={styles.alertButtonText}>
+                  {emergencyLoading ? 'Sending...' : 'Send Alert to Providers'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.emergencyButton, styles.callButton]}
+                onPress={() => {
+                  setShowEmergencyModal(false);
+                  Linking.openURL('tel:108');
+                }}
+              >
+                <Ionicons name="call" size={20} color="#fff" />
+                <Text style={styles.callButtonText}>Call 108 (Emergency)</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.emergencyButton, styles.callButton]}
+                onPress={() => {
+                  setShowEmergencyModal(false);
+                  Linking.openURL('tel:102');
+                }}
+              >
+                <Ionicons name="medical" size={20} color="#fff" />
+                <Text style={styles.callButtonText}>Call 102 (Ambulance)</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.emergencyButton, styles.cancelButton]}
+                onPress={() => setShowEmergencyModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Logout Button */}
@@ -595,5 +754,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: 8
+  },
+  // Emergency Modal Styles
+  emergencyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  emergencyModalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10
+  },
+  emergencyModalHeader: {
+    alignItems: 'center',
+    marginBottom: 16
+  },
+  emergencyModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginTop: 8,
+    textAlign: 'center'
+  },
+  emergencyModalDescription: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20
+  },
+  emergencyModalButtons: {
+    gap: 12
+  },
+  emergencyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8
+  },
+  alertButton: {
+    backgroundColor: '#ef4444'
+  },
+  callButton: {
+    backgroundColor: '#059669'
+  },
+  cancelButton: {
+    backgroundColor: '#6b7280'
+  },
+  alertButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  callButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600'
   }
 });

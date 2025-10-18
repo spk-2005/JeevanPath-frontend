@@ -235,7 +235,7 @@ const handleSubmit = async () => {
         // Assuming submitContactForm throws an error on non-2xx status
         Alert.alert(
             'Success',
-            'Your submission has been received. We will review it shortly.',
+            'Your resource has been successfully created and is now live in the app!',
             [{ text: 'OK', onPress: onClose || (() => navigation.goBack()) }]
         );
         

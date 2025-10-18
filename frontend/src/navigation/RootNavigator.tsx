@@ -8,6 +8,7 @@ import VoiceChatScreen from '@/screens/VoiceChatScreen';
 import OfflineScreen from '@/screens/OfflineScreen';
 import LocationPermissionScreen from '@/screens/LocationPermissionScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
+import EmergencyAlertsScreen from '@/screens/EmergencyAlertsScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -18,6 +19,7 @@ export type RootStackParamList = {
   VoiceChat: undefined;
   Offline: undefined;
   Profile: undefined;
+  EmergencyAlerts: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,6 +35,7 @@ export default function RootNavigator() {
       <Stack.Screen name="VoiceChat" component={VoiceChatScreen} />
       <Stack.Screen name="Offline" component={OfflineScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="EmergencyAlerts" component={EmergencyAlertsScreen} />
     </Stack.Navigator>
   );
 }

@@ -3,7 +3,9 @@ import { body } from 'express-validator';
 import { 
   submitContactForm, 
   getAllContactForms, 
-  getContactFormById 
+  getContactFormById,
+  approveContactForm,
+  rejectContactForm
 } from '../controllers/ContactForm';
 
 const router = Router();
@@ -27,5 +29,7 @@ const validateContactForm = [
 router.post('/', validateContactForm, submitContactForm);
 router.get('/', getAllContactForms);
 router.get('/:id', getContactFormById);
+router.put('/:id/approve', approveContactForm);
+router.put('/:id/reject', rejectContactForm);
 
 export default router;

@@ -4,6 +4,8 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import i18n from '@/i18n';
+import { getLoginState } from '@/utils/auth';
+import { checkServiceProvider } from '@/utils/api';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
@@ -11,32 +13,64 @@ export default function ProfileScreen() {
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [language, setLanguage] = useState('en');
+  const [isServiceProvider, setIsServiceProvider] = useState(false);
   
 
   useEffect(() => {
     (async () => {
       try {
+        // Get login state first to get the phone number
+        const loginState = await getLoginState();
+        
+        // Load saved profile data
         const stored = await AsyncStorage.getItem('profile');
         if (stored) {
           const p = JSON.parse(stored);
           setName(p.name || '');
-          setPhone(p.phone || '');
+          setPhone(p.phone || loginState?.phone || '');
           setNotes(p.notes || '');
           setLanguage(p.language || 'en');
-          
+          setIsServiceProvider(p.isServiceProvider || false);
+        } else if (loginState?.phone) {
+          // If no profile saved, use login phone number
+          setPhone(loginState.phone);
         }
         
-      } catch {}
+        // Check if this phone number belongs to a service provider
+        if (loginState?.phone) {
+          try {
+            const providerCheck = await checkServiceProvider(loginState.phone);
+            if (providerCheck.success && providerCheck.isServiceProvider) {
+              setIsServiceProvider(true);
+              // Auto-populate name if available from service provider data
+              if (providerCheck.data?.name && !name) {
+                setName(providerCheck.data.name);
+              }
+            }
+          } catch (error) {
+            console.error('Error checking service provider status:', error);
+          }
+        }
+        
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
     })();
   }, []);
 
   const save = async () => {
     try {
-      await AsyncStorage.setItem('profile', JSON.stringify({ name, phone, notes, language }));
+      await AsyncStorage.setItem('profile', JSON.stringify({ 
+        name, 
+        phone, 
+        notes, 
+        language, 
+        isServiceProvider 
+      }));
       try { i18n.changeLanguage(language); } catch {}
-      Alert.alert('Saved', 'Your details were saved');
+      Alert.alert('Saved', 'Your profile has been updated successfully');
     } catch {
-      Alert.alert('Error', 'Could not save details');
+      Alert.alert('Error', 'Could not save profile details');
     }
   };
 
@@ -52,13 +86,32 @@ export default function ProfileScreen() {
       <Text style={styles.title}>Your Profile</Text>
       <Text style={styles.subtitle}>Basic details for faster booking and contact.</Text>
       
+      {isServiceProvider && (
+        <View style={styles.serviceProviderBadge}>
+          <Ionicons name="medical" size={16} color="#dc2626" />
+          <Text style={styles.serviceProviderText}>Service Provider Account</Text>
+        </View>
+      )}
+      
       <View style={styles.formRow}>
         <Text style={styles.label}>Full Name</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" />
       </View>
       <View style={styles.formRow}>
-        <Text style={styles.label}>Phone</Text>
-        <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+91..." keyboardType="phone-pad" />
+        <Text style={styles.label}>Phone {isServiceProvider && '(Service Provider)'}</Text>
+        <TextInput 
+          style={[styles.input, isServiceProvider && styles.serviceProviderInput]} 
+          value={phone} 
+          onChangeText={setPhone} 
+          placeholder="+91..." 
+          keyboardType="phone-pad"
+          editable={!isServiceProvider} // Don't allow editing service provider phone
+        />
+        {isServiceProvider && (
+          <Text style={styles.helperText}>
+            This phone number is registered as a service provider and cannot be changed.
+          </Text>
+        )}
       </View>
       <View style={styles.formRow}>
         <Text style={styles.label}>Notes</Text>
@@ -96,7 +149,34 @@ const styles = StyleSheet.create({
   langBtn: { backgroundColor: '#e2e8f0', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   langBtnActive: { backgroundColor: '#c7d2fe' },
   langText: { color: '#0f172a', fontWeight: '700', fontSize: 12 },
-  langTextActive: { color: '#3730a3' }
+  langTextActive: { color: '#3730a3' },
+  serviceProviderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 12,
+    gap: 6
+  },
+  serviceProviderText: {
+    color: '#dc2626',
+    fontWeight: '600',
+    fontSize: 14
+  },
+  serviceProviderInput: {
+    backgroundColor: '#f9fafb',
+    color: '#6b7280'
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+    fontStyle: 'italic'
+  }
 });
 
 

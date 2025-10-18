@@ -1,24 +1,45 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Linking, SafeAreaView } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Linking, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { getSavedResources, removeSavedResource, SavedResource } from '@/utils/saved';
 import { useAppColors } from '@/theme/ThemeProvider';
 
 export default function SavedScreen() {
+  const navigation = useNavigation();
   const colors = useAppColors();
   const styles = createStyles(colors);
   const [items, setItems] = useState<SavedResource[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   async function load() {
-    const list = await getSavedResources();
-    setItems(list);
+    try {
+      const list = await getSavedResources();
+      console.log('SavedScreen: Loaded saved resources:', list.length, 'items');
+      setItems(list);
+    } catch (error) {
+      console.warn('Failed to load saved resources:', error);
+    }
+  }
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   }
 
   useEffect(() => {
-    const unsubscribe = () => {};
     load();
-    return unsubscribe;
   }, []);
+
+  // Add focus listener to refresh when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      load();
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -39,6 +60,14 @@ export default function SavedScreen() {
             </View>
           }
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           renderItem={({ item }) => (
             <View style={[styles.card, {borderColor: colors.border, backgroundColor: colors.card}]}> 
               <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>

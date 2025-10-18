@@ -1,6 +1,20 @@
 import { Request, Response } from 'express';
 import Resource from '../models/Resource';
 
+/**
+ * Calculate distance between two coordinates using Haversine formula
+ */
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export async function addResource(req: Request, res: Response) {
   try {
     const { name, type, address, contact, location, openTime, closeTime, rating } = req.body;
@@ -14,6 +28,11 @@ export async function addResource(req: Request, res: Response) {
 export async function listResources(req: Request, res: Response) {
   try {
     const { type, q, minRating, openNow, lat, lng, radiusMeters, services, languages, insurance, transportation, wheelchair, sortBy } = req.query as any;
+    
+    console.log('Resources API called with params:', {
+      type, q, minRating, openNow, lat, lng, radiusMeters, services, languages, insurance, transportation, wheelchair, sortBy
+    });
+    
     const filter: any = {};
     if (type) filter.type = String(type);
     if (q) filter.name = { $regex: q, $options: 'i' };
@@ -48,6 +67,7 @@ export async function listResources(req: Request, res: Response) {
     let queryExec = Resource.find(filter).limit(100);
     if (sortBy === 'rating') queryExec = queryExec.sort({ rating: -1 });
     if (lat && lng) {
+      console.log('Using geospatial query with coordinates:', Number(lng), Number(lat), 'radius:', Number(radiusMeters ?? 3000));
       const nearStage = {
         location: {
           $near: {
@@ -58,8 +78,35 @@ export async function listResources(req: Request, res: Response) {
       } as any;
       queryExec = Resource.find({ ...filter, ...nearStage }).limit(100);
     }
+    
     const docs = await queryExec;
-    return res.json(docs);
+    console.log(`Found ${docs.length} resources matching query`);
+    
+    // Calculate distances if location is provided
+    let resourcesWithDistance = docs;
+    if (lat && lng) {
+      resourcesWithDistance = docs.map(resource => {
+        const distance = calculateDistance(
+          Number(lat),
+          Number(lng),
+          resource.location.coordinates[1], // latitude
+          resource.location.coordinates[0]  // longitude
+        );
+        return {
+          ...resource.toObject(),
+          distanceFromUser: Math.round(distance * 10) / 10 // Round to 1 decimal place
+        };
+      });
+      
+      // Sort by distance if requested
+      if (sortBy === 'distance') {
+        resourcesWithDistance.sort((a, b) => (a.distanceFromUser || 0) - (b.distanceFromUser || 0));
+      }
+      
+      console.log(`Calculated distances for ${resourcesWithDistance.length} resources`);
+    }
+    
+    return res.json(resourcesWithDistance);
   } catch (e) {
     return res.status(500).json({ error: 'Failed to list resources' });
   }

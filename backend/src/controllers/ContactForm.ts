@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import ContactForm from '../models/ContactForm';
+import Resource from '../models/Resource';
 
 // POST /api/contact-form - Submit new contact form
 export async function submitContactForm(req: Request, res: Response) {
@@ -31,10 +32,51 @@ export async function submitContactForm(req: Request, res: Response) {
     const contactForm = new ContactForm(contactFormData);
     await contactForm.save();
 
+    // Automatically create a resource from the contact form data
+    const resourceData = {
+      name: contactFormData.resourceName,
+      type: contactFormData.resourceType,
+      address: contactFormData.resourceAddress,
+      contact: contactFormData.contactNumber,
+      alternateContact: contactFormData.alternateContact,
+      location: contactFormData.location,
+      openTime: contactFormData.openTime,
+      closeTime: contactFormData.closeTime,
+      operatingDays: contactFormData.operatingDays,
+      is24Hours: contactFormData.is24Hours,
+      services: contactFormData.services,
+      languages: contactFormData.languages,
+      wheelchairAccessible: contactFormData.wheelchairAccessible,
+      parkingAvailable: contactFormData.parkingAvailable,
+      description: contactFormData.description,
+      websiteUrl: contactFormData.websiteUrl,
+      rating: 0, // Default rating for new resources
+      reviewCount: 0,
+      isVerified: true,
+      submittedBy: {
+        name: contactFormData.userName,
+        phone: contactFormData.phoneNumber,
+        email: contactFormData.email
+      }
+    };
+
+    // Create the resource
+    const resource = new Resource(resourceData);
+    await resource.save();
+
+    // Update contact form status to approved since we're auto-creating the resource
+    contactForm.status = 'approved';
+    contactForm.approvedAt = new Date();
+    contactForm.isVerified = true;
+    await contactForm.save();
+
     return res.status(201).json({
       success: true,
-      message: 'Contact form submitted successfully. We will review your submission soon.',
-      data: contactForm
+      message: 'Resource submitted and created successfully. It is now visible in the app.',
+      data: {
+        contactForm,
+        resource
+      }
     });
   } catch (error: any) {
     console.error('Error submitting contact form:', error);
@@ -108,5 +150,121 @@ export async function getContactFormById(req: Request, res: Response) {
   }
 }
 
-// ... (You can add approve, reject, delete, and stats functions here as well)
-// For brevity, I'll stop here, but the pattern is clear from your original code.
+// PUT /api/contact-form/:id/approve - Approve contact form and create resource
+export async function approveContactForm(req: Request, res: Response) {
+  try {
+    const contactForm = await ContactForm.findById(req.params.id);
+
+    if (!contactForm) {
+      return res.status(404).json({
+        success: false,
+        message: 'Contact form not found'
+      });
+    }
+
+    if (contactForm.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Contact form is not in pending status'
+      });
+    }
+
+    // Import Resource model
+    const Resource = require('../models/Resource').default;
+
+    // Create resource from contact form data
+    const resourceData = {
+      name: contactForm.resourceName,
+      type: contactForm.resourceType,
+      address: contactForm.resourceAddress,
+      contact: contactForm.contactNumber,
+      alternateContact: contactForm.alternateContact,
+      location: contactForm.location,
+      openTime: contactForm.openTime,
+      closeTime: contactForm.closeTime,
+      operatingDays: contactForm.operatingDays,
+      is24Hours: contactForm.is24Hours,
+      services: contactForm.services,
+      languages: contactForm.languages,
+      wheelchairAccessible: contactForm.wheelchairAccessible,
+      parkingAvailable: contactForm.parkingAvailable,
+      description: contactForm.description,
+      websiteUrl: contactForm.websiteUrl,
+      rating: 0, // Default rating for new resources
+      reviewCount: 0,
+      isVerified: true,
+      submittedBy: {
+        name: contactForm.userName,
+        phone: contactForm.phoneNumber,
+        email: contactForm.email
+      }
+    };
+
+    // Create the resource
+    const resource = new Resource(resourceData);
+    await resource.save();
+
+    // Update contact form status
+    contactForm.status = 'approved';
+    contactForm.approvedAt = new Date();
+    contactForm.isVerified = true;
+    await contactForm.save();
+
+    return res.json({
+      success: true,
+      message: 'Contact form approved and resource created successfully',
+      data: {
+        contactForm,
+        resource
+      }
+    });
+  } catch (error: any) {
+    console.error('Error approving contact form:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to approve contact form',
+      error: error.message
+    });
+  }
+}
+
+// PUT /api/contact-form/:id/reject - Reject contact form
+export async function rejectContactForm(req: Request, res: Response) {
+  try {
+    const { rejectionReason } = req.body;
+    
+    const contactForm = await ContactForm.findById(req.params.id);
+
+    if (!contactForm) {
+      return res.status(404).json({
+        success: false,
+        message: 'Contact form not found'
+      });
+    }
+
+    if (contactForm.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Contact form is not in pending status'
+      });
+    }
+
+    contactForm.status = 'rejected';
+    contactForm.rejectedAt = new Date();
+    contactForm.rejectionReason = rejectionReason || 'No reason provided';
+    await contactForm.save();
+
+    return res.json({
+      success: true,
+      message: 'Contact form rejected successfully',
+      data: contactForm
+    });
+  } catch (error: any) {
+    console.error('Error rejecting contact form:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reject contact form',
+      error: error.message
+    });
+  }
+}

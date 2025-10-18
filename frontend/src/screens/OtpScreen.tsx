@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // import { registerDevice } from '../utils/api';
 import { saveLoginState } from '../utils/auth';
 
@@ -32,6 +33,16 @@ export default function OtpScreen() {
         // Save login state for automatic login
         if (deviceInfo) {
           await saveLoginState(phone, deviceInfo.deviceId);
+        }
+        
+        // Save phone number to profile
+        try {
+          const existingProfile = await AsyncStorage.getItem('profile');
+          const profile = existingProfile ? JSON.parse(existingProfile) : {};
+          profile.phone = phone;
+          await AsyncStorage.setItem('profile', JSON.stringify(profile));
+        } catch (error) {
+          console.error('Error saving phone to profile:', error);
         }
         
         navigation.replace('Main');

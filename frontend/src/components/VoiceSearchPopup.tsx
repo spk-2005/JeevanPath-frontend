@@ -19,6 +19,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 
+
 interface VoiceSearchPopupProps {
   visible: boolean;
   onClose: () => void;
@@ -56,29 +57,43 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
   }, [visible]);
 
   useEffect(() => {
-    // Initialize voice recognition
+    // Initialize voice recognition only in development builds
     const initializeVoice = async () => {
       try {
-        // Check if Voice is available
-        const isExpoGo = Platform.OS === 'web' || (Constants?.appOwnership === 'expo');
+        // Skip voice initialization in Expo Go
+        const isExpoGo = Constants?.appOwnership === 'expo';
         if (isExpoGo) {
-          console.log('Voice not available in Expo Go');
-          setError('Voice recognition not available in Expo Go');
+          console.log('📱 Expo Go - skipping voice initialization');
           return;
         }
-        // Set up event listeners
+        
+        if (Platform.OS === 'web') {
+          console.log('🌐 Web platform - skipping voice initialization');
+          return;
+        }
+        
+        // Check if Voice module is properly loaded
+        if (!Voice || typeof Voice.onSpeechStart !== 'function' || !Voice._nativeModule) {
+          console.log('🎙️ Voice module not available - skipping initialization');
+          return;
+        }
+        
+        // Set up event listeners only in development builds
         Voice.onSpeechStart = () => {
+          console.log('✅ Speech started');
           setIsListening(true);
           setError(null);
           startPulseAnimation();
         };
 
         Voice.onSpeechEnd = () => {
+          console.log('✅ Speech ended');
           setIsListening(false);
           stopPulseAnimation();
         };
 
         Voice.onSpeechResults = (event: SpeechResultsEvent) => {
+          console.log('✅ Speech results:', event.value);
           if (event.value && event.value.length > 0) {
             const spokenText = event.value[0];
             setRecognizedText(spokenText);
@@ -87,9 +102,13 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
         };
 
         Voice.onSpeechError = (event: SpeechErrorEvent) => {
+          console.error('❌ Speech error:', event.error);
           setIsListening(false);
           stopPulseAnimation();
-          setError(event.error?.message || 'Speech recognition error');
+          
+          // Fallback to text input on error
+          console.log('📝 Voice error - falling back to text input');
+          setShowTextInput(true);
         };
 
         Voice.onSpeechPartialResults = (event: SpeechResultsEvent) => {
@@ -97,8 +116,10 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
             setRecognizedText(event.value[0]);
           }
         };
+        
+        console.log('✅ Voice recognition initialized for development build');
       } catch (err) {
-        setError('Voice recognition initialization failed');
+        console.error('❌ Voice initialization error:', err);
       }
     };
 
@@ -106,9 +127,19 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
 
     // Cleanup on unmount
     return () => {
-      Voice.destroy().then(() => {
-        Voice.removeAllListeners();
-      });
+      try {
+        if (Voice && typeof Voice.destroy === 'function' && Voice._nativeModule) {
+          Voice.destroy().then(() => {
+            if (typeof Voice.removeAllListeners === 'function') {
+              Voice.removeAllListeners();
+            }
+          }).catch((err) => {
+            console.log('Voice cleanup error:', err);
+          });
+        }
+      } catch (err) {
+        console.log('Voice cleanup error:', err);
+      }
     };
   }, []);
 
@@ -118,56 +149,85 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
       setRecognizedText('');
       setBotResponse('');
       
-      // For demo purposes when native module isn't available
-      if (Platform.OS === 'web' || !Voice._nativeModule) {
-        console.log('Using demo mode for voice recognition');
+      // Check environment - prioritize Expo Go detection
+      const isExpoGo = Constants?.appOwnership === 'expo';
+      const isWeb = Platform.OS === 'web';
+      
+      // In Expo Go, always use text input - no voice attempts
+      if (isExpoGo) {
+        console.log('📱 Expo Go detected - using chat interface');
         setShowTextInput(true);
         return;
       }
       
+      // On web, use text input
+      if (isWeb) {
+        console.log('🌐 Web platform - using text input');
+        setShowTextInput(true);
+        return;
+      }
+      
+      // Check if Voice module is properly loaded (only for dev builds)
+      const voiceModuleAvailable = Voice && 
+        Voice._nativeModule !== null &&
+        Voice._nativeModule !== undefined &&
+        typeof Voice.start === 'function';
+      
+      if (!voiceModuleAvailable) {
+        console.log('🎙️ Voice module not available - using text input');
+        setShowTextInput(true);
+        return;
+      }
+      
+      // Only attempt voice recognition in development builds
+      console.log('🎙️ Development build detected - attempting voice recognition');
+      await attemptVoiceRecognition();
+      
+    } catch (err) {
+      console.error('❌ Error in startListening:', err);
+      setShowTextInput(true);
+    }
+  };
+
+  const attemptVoiceRecognition = async () => {
+    try {
       // Stop any ongoing recognition and speech
       try {
-        await Voice.stop();
-        await Speech.stop();
+        if (Voice && typeof Voice.stop === 'function') {
+          await Voice.stop();
+        }
+        if (Speech && typeof Speech.stop === 'function') {
+          await Speech.stop();
+        }
       } catch (stopErr) {
         console.log('Error stopping voice/speech:', stopErr);
       }
       
-      // Start new recognition with auto language detection
-      try {
-        await Voice.start('en-IN'); // Start with English, but will detect language in backend
-        console.log('Voice recognition started');
-      } catch (voiceErr) {
-        console.error('Voice start error:', voiceErr);
-        
-        // Fallback to text input
-        Alert.alert(
-          'Voice Recognition Unavailable',
-          'Voice recognition is not available. Would you like to type instead?',
-          [
-            {
-              text: 'Cancel',
-              style: 'cancel',
-              onPress: () => {
-                setError('Voice recognition unavailable');
-                setIsListening(false);
-                stopPulseAnimation();
-              }
-            },
-            {
-              text: 'Type Message',
-              onPress: () => {
-                setShowTextInput(true);
-              }
-            }
-          ]
-        );
+      // Start voice recognition
+      setIsListening(true);
+      startPulseAnimation();
+      
+      // Try to start voice recognition with better error handling
+      if (Voice && typeof Voice.start === 'function' && Voice._nativeModule) {
+        try {
+          await Voice.start('en-IN');
+          console.log('✅ Voice recognition started successfully');
+        } catch (startErr) {
+          console.error('🎙️ Voice start failed:', startErr);
+          throw new Error('Voice recognition not available on this device');
+        }
+      } else {
+        throw new Error('Voice module not properly initialized');
       }
-    } catch (err) {
-      console.error('Error starting voice recognition:', err);
-      setError('Failed to start voice recognition');
+      
+    } catch (voiceErr) {
+      console.error('🎙️ Error starting voice recognition:', voiceErr);
       setIsListening(false);
       stopPulseAnimation();
+      
+      // Fallback to text input immediately without alert
+      console.log('📝 Falling back to text input');
+      setShowTextInput(true);
     }
   };
 
@@ -201,17 +261,151 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
         console.log('Could not get location for context:', locationError);
       }
       
-      // Process voice command through backend NLP
-      const { processVoiceCommand: processVoiceAPI } = await import('@/utils/api');
-      const result = await processVoiceAPI(text, userContext);
+      // Try backend NLP first, fallback to frontend processing
+      let result;
+      let detectedLanguage = 'en';
+      let response = '';
+      let navResult = null;
+      let shouldNavigate = false;
       
-      console.log('Backend NLP result:', result);
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to process voice command');
+      try {
+        // Try backend NLP
+        const { processVoiceCommand: processVoiceAPI } = await import('@/utils/api');
+        const backendResult = await processVoiceAPI(text, userContext);
+        
+        if (backendResult.success) {
+          console.log('Backend NLP result:', backendResult);
+          result = backendResult.data;
+          detectedLanguage = result.detectedLanguage;
+          response = result.response;
+          navResult = result.navigation;
+          shouldNavigate = result.shouldNavigate;
+        } else {
+          throw new Error('Backend NLP failed');
+        }
+      } catch (backendError) {
+        console.log('Backend NLP not available, using frontend fallback:', backendError);
+        
+        // Fallback to frontend processing
+        const { processVoiceCommand: processFrontend } = await import('@/utils/voiceCommandProcessor');
+        const { detectLanguage } = await import('@/utils/translationService');
+        
+        detectedLanguage = detectLanguage(text);
+        const frontendResult = processFrontend(text);
+        
+        // Generate simple conversational responses
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes('hi') || lowerText.includes('hello') || lowerText.includes('नमस्ते') || lowerText.includes('హలో')) {
+          response = detectedLanguage === 'hi' ? 'नमस्ते! मैं आपको स्वास्थ्य सेवाओं को खोजने में मदद कर सकता हूं।' :
+                   detectedLanguage === 'te' ? 'హలో! ఆరోగ్య వనరులను కనుగొనడంలో నేను మీకు సహాయపడగలను।' :
+                   'Hi! How can I help you find healthcare resources today?';
+          shouldNavigate = false;
+        } else if (lowerText.includes('thank') || lowerText.includes('धन्यवाद') || lowerText.includes('ధన్యవాదాలు')) {
+          response = detectedLanguage === 'hi' ? 'आपका स्वागत है! कुछ और सहायता चाहिए?' :
+                   detectedLanguage === 'te' ? 'మీకు స్వాగతం! మరేదైనా సహాయం కావాలా?' :
+                   'You\'re welcome! Anything else I can help with?';
+          shouldNavigate = false;
+        } else {
+          // Enhanced processing for different types of commands
+          const lowerText = text.toLowerCase();
+          
+          // Check for sorting commands (enhanced to handle more variations)
+          if (lowerText.includes('sort') || lowerText.includes('arrange') || lowerText.includes('order') || 
+              lowerText.includes('highest rating') || lowerText.includes('best rating') || 
+              lowerText.includes('top rated') || lowerText.includes('sorted order')) {
+            
+            if (lowerText.includes('rating') || lowerText.includes('review') || lowerText.includes('star') ||
+                lowerText.includes('highest') || lowerText.includes('best') || lowerText.includes('top')) {
+              response = detectedLanguage === 'hi' ? 'मैं संसाधनों को रेटिंग के अनुसार क्रमबद्ध कर रहा हूं। सबसे अच्छी रेटिंग वाले पहले दिखाए जाएंगे।' :
+                       detectedLanguage === 'te' ? 'నేను వనరులను రేటింగ్ ప్రకారం క్రమబద్ధీకరిస్తున్నాను। అత్యుత్తమ రేటింగ్ ఉన్నవి మొదట చూపబడతాయి।' :
+                       'I\'ll sort the resources by rating for you. Highest rated resources will be shown first.';
+              console.log('Frontend fallback: Setting sortBy to rating for command:', text);
+              navResult = {
+                targetScreen: 'Home',
+                filterParams: {
+                  searchQuery: '',
+                  sortBy: 'rating',
+                  showAll: true // Show all resources, not filtered by type
+                }
+              };
+              shouldNavigate = true;
+            } else if (lowerText.includes('distance') || lowerText.includes('location') || lowerText.includes('near') || lowerText.includes('closest')) {
+              response = detectedLanguage === 'hi' ? 'मैं संसाधनों को दूरी के अनुसार क्रमबद्ध कर रहा हूं। सबसे नजदीकी पहले दिखाए जाएंगे।' :
+                       detectedLanguage === 'te' ? 'నేను వనరులను దూరం ప్రకారం క్రమబద్ధీకరిస్తున్నాను। దగ్గరగా ఉన్నవి మొదట చూపబడతాయి।' :
+                       'I\'ll sort the resources by distance for you. Nearest resources will be shown first.';
+              navResult = {
+                targetScreen: 'Home',
+                filterParams: {
+                  searchQuery: '',
+                  sortBy: 'distance',
+                  showAll: true
+                }
+              };
+              shouldNavigate = true;
+            } else if (lowerText.includes('name') || lowerText.includes('alphabetical')) {
+              response = detectedLanguage === 'hi' ? 'मैं संसाधनों को नाम के अनुसार क्रमबद्ध कर रहा हूं।' :
+                       detectedLanguage === 'te' ? 'నేను వనరులను పేరు ప్రకారం క్రమబద్ధీకరిస్తున్నాను।' :
+                       'I\'ll sort the resources alphabetically by name for you.';
+              navResult = {
+                targetScreen: 'Home',
+                filterParams: {
+                  searchQuery: '',
+                  sortBy: 'name',
+                  showAll: true
+                }
+              };
+              shouldNavigate = true;
+            } else {
+              // Default to rating sort when sorting is mentioned but no specific criteria
+              response = detectedLanguage === 'hi' ? 'मैं संसाधनों को रेटिंग के अनुसार व्यवस्थित कर रहा हूं।' :
+                       detectedLanguage === 'te' ? 'నేను వనరులను రేటింగ్ ప్రకారం వ్యవస్థీకరిస్తున్నాను।' :
+                       'I\'ll organize the resources by rating for you.';
+              navResult = {
+                targetScreen: 'Home',
+                filterParams: {
+                  searchQuery: '',
+                  sortBy: 'rating',
+                  showAll: true
+                }
+              };
+              shouldNavigate = true;
+            }
+          }
+          // Check for "show all" or "display all" commands (enhanced)
+          else if (lowerText.includes('show all') || lowerText.includes('display all') || lowerText.includes('list all') ||
+                   lowerText.includes('all resources') || lowerText.includes('everything') || 
+                   lowerText.includes('complete list') || lowerText.includes('full list')) {
+            response = detectedLanguage === 'hi' ? 'मैं सभी उपलब्ध संसाधन दिखा रहा हूं। आप फिल्टर और सॉर्ट विकल्पों का उपयोग कर सकते हैं।' :
+                     detectedLanguage === 'te' ? 'నేను అందుబాటులో ఉన్న అన్ని వనరులను చూపిస్తున్నాను. మీరు ఫిల్టర్ మరియు సార్ట్ ఎంపికలను ఉపయోగించవచ్చు।' :
+                     'I\'ll show you all available resources. You can use filter and sort options to refine your search.';
+            navResult = {
+              targetScreen: 'Home',
+              filterParams: {
+                searchQuery: '',
+                showAll: true
+              }
+            };
+            shouldNavigate = true;
+          }
+          // For search queries, provide helpful response and navigate
+          else if (frontendResult.filterParams && Object.keys(frontendResult.filterParams).length > 0) {
+            const resourceType = frontendResult.filterParams.type || 'healthcare resources';
+            response = detectedLanguage === 'hi' ? `मैं आपको ${resourceType} खोजने में मदद करूंगा।` :
+                     detectedLanguage === 'te' ? `నేను మీకు ${resourceType} కనుగొనడంలో సహాయపడతాను।` :
+                     `I'll help you find ${resourceType}.`;
+            navResult = {
+              targetScreen: frontendResult.targetScreen,
+              filterParams: frontendResult.filterParams
+            };
+            shouldNavigate = true;
+          } else {
+            response = detectedLanguage === 'hi' ? 'मुझे समझ नहीं आया। क्या आप अधिक स्पष्ट हो सकते हैं?' :
+                     detectedLanguage === 'te' ? 'నాకు అర్థం కాలేదు। మీరు మరింత స్పష్టంగా చెప్పగలరా?' :
+                     'I didn\'t quite understand. Could you be more specific about what you need?';
+            shouldNavigate = false;
+          }
+        }
       }
-      
-      const { response, navigation: navResult, detectedLanguage, shouldNavigate } = result.data;
       
       // Set bot response
       setBotResponse(response);
@@ -220,11 +414,17 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
       // Speak the response in the detected language
       await speakResponse(response, detectedLanguage);
       
-      // Navigate only if it's an actionable command
+      // Navigate immediately for actionable commands
       if (shouldNavigate && navResult) {
-        // Wait a bit for the user to hear the response
+        console.log('Voice command navigating with params:', navResult);
+        
+        // Close the popup first
+        onClose();
+        
+        // Navigate immediately for better user experience
         setTimeout(() => {
           if (navResult.targetScreen === 'Home' && navResult.filterParams) {
+            console.log('Navigating to Home with filterParams:', navResult.filterParams);
             navigation.navigate('Home', { 
               searchQuery: navResult.filterParams.searchQuery || text,
               filterParams: navResult.filterParams
@@ -237,8 +437,7 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
           } else {
             navigation.navigate(navResult.targetScreen);
           }
-          onClose();
-        }, 3000); // 3 second delay to let user hear response
+        }, 500); // Short delay to allow popup to close smoothly
       }
       
       if (onSearch) {
@@ -337,7 +536,9 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
             <Text style={[styles.title, { color: colors.textPrimary }]}>
               {isListening ? 'Listening...' : 
                processingResult ? 'Processing...' : 
-               'Voice Search'}
+               isSpeaking ? 'Speaking...' :
+               conversationMode ? 'Chat Assistant' :
+               Constants?.appOwnership === 'expo' ? 'Chat Assistant' : 'Voice Search'}
             </Text>
           </View>
           
@@ -363,7 +564,8 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
                   <ActivityIndicator size="large" color="white" />
                 ) : (
                   <Ionicons 
-                    name={isListening ? "stop" : "mic"} 
+                    name={isListening ? "stop" : 
+                          Constants?.appOwnership === 'expo' ? "chatbox" : "mic"} 
                     size={32} 
                     color="white"
                   />
@@ -377,7 +579,7 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
                processingResult ? 'Processing your request...' : 
                isSpeaking ? 'Speaking...' :
                conversationMode ? 'Tap to continue conversation' :
-               'Tap the microphone to start'}
+               Constants?.appOwnership === 'expo' ? 'Tap to type your message' : 'Tap the microphone to start'}
             </Text>
             
             {/* Conversation Display */}
@@ -424,7 +626,7 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
             {!isListening && !processingResult && !recognizedText && !conversationMode && (
               <View style={styles.examplesContainer}>
                 <Text style={[styles.examplesTitle, { color: colors.textSecondary }]}>
-                  Try saying:
+                  Try saying or typing:
                 </Text>
                 <Text style={[styles.exampleText, { color: colors.textSecondary }]}>
                   • "Hi" or "Hello"
@@ -436,8 +638,22 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
                   • "Find clinics near me"
                 </Text>
                 <Text style={[styles.exampleText, { color: colors.textSecondary }]}>
-                  • "Show saved resources"
+                  • "Sort by highest rating"
                 </Text>
+                <Text style={[styles.exampleText, { color: colors.textSecondary }]}>
+                  • "Show all resources"
+                </Text>
+                
+                {/* Type Message Button */}
+                <TouchableOpacity 
+                  style={[styles.typeMessageButton, { backgroundColor: colors.accentSoft, borderColor: colors.accent }]}
+                  onPress={() => setShowTextInput(true)}
+                >
+                  <Ionicons name="chatbox" size={16} color={colors.accent} />
+                  <Text style={[styles.typeMessageText, { color: colors.accent }]}>
+                    Type Message Instead
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
             
@@ -469,7 +685,7 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
         <View style={styles.textInputOverlay}>
           <View style={[styles.textInputModal, { backgroundColor: colors.card }]}>
             <Text style={[styles.textInputTitle, { color: colors.textPrimary }]}>
-              Type your message
+              {Constants?.appOwnership === 'expo' ? 'Chat with JeevanPath Assistant' : 'Type your message'}
             </Text>
             <TextInput
               style={[styles.textInputField, { 
@@ -479,7 +695,7 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
               }]}
               value={textInput}
               onChangeText={setTextInput}
-              placeholder="e.g., Hi, I need blood, find clinics..."
+              placeholder="e.g., Hi, I need blood, sort by highest rating, show all resources..."
               placeholderTextColor={colors.textSecondary}
               multiline
               autoFocus
@@ -488,10 +704,19 @@ export default function VoiceSearchPopup({ visible, onClose, onSearch }: VoiceSe
             {/* Quick Demo Options */}
             <View style={styles.quickOptions}>
               <Text style={[styles.quickOptionsTitle, { color: colors.textSecondary }]}>
-                Quick test options:
+                Quick examples:
               </Text>
               <View style={styles.quickOptionsRow}>
-                {['Hi', 'I want blood', 'Find clinics', 'Help'].map((option) => (
+                {[
+                  'Hi', 
+                  'I want blood', 
+                  'Find clinics near me', 
+                  'Sort by highest rating',
+                  'Show all resources',
+                  'Give highest rating resources in sorted order',
+                  'नमस्ते', // Hindi: Hello
+                  'హలో' // Telugu: Hello
+                ].map((option) => (
                   <TouchableOpacity
                     key={option}
                     style={[styles.quickOption, { backgroundColor: colors.accentSoft }]}
@@ -775,5 +1000,20 @@ const styles = StyleSheet.create({
   quickOptionText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  typeMessageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  typeMessageText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
   },
 });

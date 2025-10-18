@@ -5,7 +5,7 @@ export interface VoiceCommandDocument extends Document {
   detectedLanguage: string;
   processedAt: Date;
   intent: {
-    type: 'search' | 'navigation' | 'filter' | 'emergency';
+    type: 'search' | 'navigation' | 'filter' | 'sort' | 'emergency' | 'greeting' | 'thanks' | 'help' | 'conversation';
     confidence: number;
     entities: {
       resourceType?: 'clinic' | 'pharmacy' | 'blood' | 'hospital';
@@ -15,6 +15,15 @@ export interface VoiceCommandDocument extends Document {
       availability?: 'open' | 'available' | 'now';
       action?: 'find' | 'show' | 'search' | 'locate' | 'get';
       target?: 'saved' | 'bookmarks' | 'favorites' | 'settings' | 'map';
+      // New sorting and filtering entities
+      needsSorting?: boolean;
+      sortBy?: 'rating' | 'distance' | 'name';
+      sortOrder?: 'asc' | 'desc';
+      showAll?: boolean;
+      openNow?: boolean;
+      nearbyFilter?: boolean;
+      ratingFilter?: boolean;
+      minRating?: number;
     };
   };
   navigation: {
@@ -26,6 +35,10 @@ export interface VoiceCommandDocument extends Document {
       emergency?: boolean;
       searchQuery?: string;
       near?: boolean;
+      // New sorting and filtering parameters
+      sortBy?: 'rating' | 'distance' | 'name';
+      sortOrder?: 'asc' | 'desc';
+      showAll?: boolean;
     };
   };
   userContext?: {
@@ -43,7 +56,7 @@ const voiceCommandSchema = new Schema<VoiceCommandDocument>({
   detectedLanguage: { type: String, required: true },
   processedAt: { type: Date, default: Date.now },
   intent: {
-    type: { type: String, enum: ['search', 'navigation', 'filter', 'emergency'], required: true },
+    type: { type: String, enum: ['search', 'navigation', 'filter', 'sort', 'emergency', 'greeting', 'thanks', 'help', 'conversation'], required: true },
     confidence: { type: Number, min: 0, max: 1, required: true },
     entities: {
       resourceType: { type: String, enum: ['clinic', 'pharmacy', 'blood', 'hospital'] },
@@ -52,18 +65,31 @@ const voiceCommandSchema = new Schema<VoiceCommandDocument>({
       urgency: { type: String, enum: ['emergency', 'urgent', 'immediate'] },
       availability: { type: String, enum: ['open', 'available', 'now'] },
       action: { type: String, enum: ['find', 'show', 'search', 'locate', 'get'] },
-      target: { type: String, enum: ['saved', 'bookmarks', 'favorites', 'settings', 'map'] }
+      target: { type: String, enum: ['saved', 'bookmarks', 'favorites', 'settings', 'map'] },
+      // New sorting and filtering entities
+      needsSorting: Boolean,
+      sortBy: { type: String, enum: ['rating', 'distance', 'name'] },
+      sortOrder: { type: String, enum: ['asc', 'desc'] },
+      showAll: Boolean,
+      openNow: Boolean,
+      nearbyFilter: Boolean,
+      ratingFilter: Boolean,
+      minRating: Number
     }
   },
   navigation: {
     targetScreen: { type: String, enum: ['Home', 'Maps', 'Saved', 'Settings'], required: true },
     filterParams: {
-      type: String,
+      type: {type: String},
       minRating: Number,
       openNow: Boolean,
       emergency: Boolean,
       searchQuery: String,
-      near: Boolean
+      near: Boolean,
+      // New sorting and filtering parameters
+      sortBy: { type: String, enum: ['rating', 'distance', 'name'] },
+      sortOrder: { type: String, enum: ['asc', 'desc'] },
+      showAll: Boolean
     }
   },
   userContext: {

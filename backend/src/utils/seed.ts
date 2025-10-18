@@ -9,6 +9,10 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://prasannasimha5002_db_u
 async function run() {
   await mongoose.connect(MONGO_URI);
   await Resource.deleteMany({});
+  // Distance options: 3km, 10km, 15km, 25km
+  const distanceOptions = [3, 10, 15, 25];
+  const getRandomDistance = () => distanceOptions[Math.floor(Math.random() * distanceOptions.length)];
+
   await Resource.insertMany([
     {
       name: 'City General Hospital',
@@ -23,7 +27,8 @@ async function run() {
       languages: ['English','Hindi'],
       insuranceAccepted: ['Medicare','Medicaid'],
       transportation: ['walking_distance','car_accessible','free_parking'],
-      wheelchairAccessible: true
+      wheelchairAccessible: true,
+      distanceFromUser: getRandomDistance()
     },
     {
       name: 'HealthPlus Clinic',
