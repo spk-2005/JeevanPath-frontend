@@ -1,20 +1,24 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, FlatList, Modal, ScrollView, Switch, Linking, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { useAppColors } from '@/theme/ThemeProvider';
 import { getResources } from '@/utils/api';
+import { toggleSaved, isResourceSaved } from '@/utils/saved';
 import { useTranslation } from 'react-i18next';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 export default function HomeScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { t, i18n } = useTranslation();
   const colors = useAppColors();
   const styles = createStyles(colors);
   const [query, setQuery] = useState('');
   const [resources, setResources] = useState<any[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<string | undefined>(undefined);
   const [openNow, setOpenNow] = useState(false);
   const [radiusKm, setRadiusKm] = useState<number | undefined>(undefined);
@@ -24,43 +28,124 @@ export default function HomeScreen() {
   const [insurance, setInsurance] = useState<string[]>([]);
   const [transportation, setTransportation] = useState<string[]>([]);
   const [wheelchair, setWheelchair] = useState(false);
+  const [nearbyMe, setNearbyMe] = useState(true);
+  const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'name'>('distance');
+  const [currentLocation, setCurrentLocation] = useState('Getting location...');
+  const [locationPickerOpen, setLocationPickerOpen] = useState(false);
+  const [locationSearchOpen, setLocationSearchOpen] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Handle voice search parameters from navigation
+  useEffect(() => {
+    if (route.params?.searchQuery || route.params?.filterParams) {
+      const { searchQuery: voiceQuery, filterParams } = route.params;
+      
+      console.log('Voice search params received:', { voiceQuery, filterParams });
+      
+      // Set search query
+      if (voiceQuery) {
+        setQuery(voiceQuery);
+        setSearchQuery(voiceQuery);
+      }
+      
+      // Apply filters from voice command
+      if (filterParams) {
+        if (filterParams.type) {
+          setSelectedType(filterParams.type);
+        }
+        if (filterParams.minRating) {
+          setMinRating(filterParams.minRating);
+        }
+        if (filterParams.openNow) {
+          setOpenNow(filterParams.openNow);
+        }
+        if (filterParams.emergency) {
+          // Handle emergency - could set special filters or show emergency resources
+          setOpenNow(true); // Emergency usually needs open facilities
+        }
+        if (filterParams.near) {
+          setNearbyMe(true);
+        }
+      }
+      
+      // Clear the params to prevent re-triggering
+      navigation.setParams({ searchQuery: undefined, filterParams: undefined });
+    }
+  }, [route.params, navigation]);
+
+  // Get location name from coordinates
+  const getLocationName = async (lat: number, lng: number) => {
+    try {
+      const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`);
+      const data = await response.json();
+      if (data.city && data.principalSubdivision) {
+        return `${data.city}, ${data.principalSubdivision}`;
+      } else if (data.locality) {
+        return data.locality;
+      } else {
+        return 'Current Location';
+      }
+    } catch (error) {
+      console.warn('Failed to get location name:', error);
+      return 'Current Location';
+    }
+  };
+
+  // Get current location and name
+  const getCurrentLocation = async () => {
+    try {
+      const { coords } = await Location.getCurrentPositionAsync({});
+      const location = { lat: coords.latitude, lng: coords.longitude };
+      setUserLocation(location);
+      const locationName = await getLocationName(coords.latitude, coords.longitude);
+      setCurrentLocation(locationName);
+    } catch (error) {
+      console.warn('Failed to get current location:', error);
+      setCurrentLocation('Location unavailable');
+    }
+  };
 
   useEffect(() => {
     (async () => {
       try {
-        let params: any = { q: query || undefined, type: selectedType ? selectedType.toLowerCase() : undefined, openNow: openNow || undefined, minRating, services, languages, insurance, transportation, wheelchair };
-        if (radiusKm) {
+        let params: any = { q: query || undefined, type: selectedType ? selectedType.toLowerCase() : undefined, openNow: openNow || undefined, minRating, services, languages, insurance, transportation, wheelchair, sortBy };
+        if (nearbyMe || radiusKm) {
           const { coords } = await Location.getCurrentPositionAsync({});
-          params = { ...params, lat: coords.latitude, lng: coords.longitude, radiusMeters: radiusKm * 1000 };
+          params = { ...params, lat: coords.latitude, lng: coords.longitude, radiusMeters: radiusKm ? radiusKm * 1000 : 5000 };
         }
         const data = await getResources(params);
-        setResources(
-          (data || []).map((r: any) => ({
-            id: r._id || String(Math.random()),
-            name: r.name,
-            type: r.type || 'Hospital',
-            distance: '—',
-            time: '—',
-            rating: r.rating ? `${r.rating}` : '—',
-            status: openNow ? 'Open' : '—',
-            emergency: r.emergency || false,
-            address: r.address || '—',
-            phone: r.contact || undefined,
-            coords: r.location && Array.isArray(r.location.coordinates) ? { lat: r.location.coordinates[1], lng: r.location.coordinates[0] } : undefined
-          }))
-        );
+        const mapped = (data || []).map((r: any) => ({
+          id: r._id || String(Math.random()),
+          name: r.name,
+          type: r.type || 'Hospital',
+          distance: '—',
+          time: '—',
+          rating: r.rating ? `${r.rating}` : '—',
+          status: openNow ? 'Open' : '—',
+          emergency: r.emergency || false,
+          address: r.address || '—',
+          phone: r.contact || undefined,
+          coords: r.location && Array.isArray(r.location.coordinates) ? { lat: r.location.coordinates[1], lng: r.location.coordinates[0] } : undefined
+        }));
+        // mark saved flags
+        const withSavedFlags = await Promise.all(mapped.map(async (m: {id: string, [key: string]: any}) => ({ ...m, __saved: await isResourceSaved(m.id) })));
+        setResources(withSavedFlags);
       } catch (err) {
         console.warn('Failed to load resources', err);
         setResources([]);
       }
     })();
-  }, [query, selectedType, openNow, radiusKm, minRating, services, languages, insurance, transportation, wheelchair]);
+  }, [query, selectedType, openNow, radiusKm, minRating, services, languages, insurance, transportation, wheelchair, nearbyMe, sortBy]);
 
   useEffect(() => {
     (async () => {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') {
         navigation.replace('LocationPermission');
+      } else {
+        getCurrentLocation();
       }
     })();
   }, [navigation]);
@@ -85,24 +170,38 @@ export default function HomeScreen() {
         <TouchableOpacity style={styles.bookBtn}><Text style={{color:'#fff', fontWeight:'700'}}>Book Now</Text></TouchableOpacity>
       </View>
 
-      <View style={[styles.rowPill,{borderColor:colors.border}]}><Text style={{color:colors.textPrimary}}>📍 {t('location_label') as string}</Text><Text style={[styles.link,{color:colors.accent}]}> {t('demo_city') as string}</Text></View>
+      <TouchableOpacity style={[styles.rowPill,{borderColor:colors.border}]} onPress={() => setLocationPickerOpen(true)}>
+        <Ionicons name="location" size={16} color={colors.accent} />
+        <Text style={{color:colors.textPrimary, marginLeft: 8}}>{t('location_label') as string}</Text>
+        <Text style={[styles.link,{color:colors.accent}]}> {currentLocation}</Text>
+        <Ionicons name="chevron-down" size={16} color={colors.accent} style={{marginLeft: 4}} />
+      </TouchableOpacity>
       <View style={styles.searchRow}>
         <TextInput style={[styles.searchInput,{borderColor:colors.border, color:colors.textPrimary, backgroundColor: colors.card}]} placeholder={t('search_placeholder') as string} placeholderTextColor={colors.muted} value={query} onChangeText={setQuery} />
         <TouchableOpacity style={[styles.searchBtn,{backgroundColor: colors.primary}]}><Text style={{color:'#fff', fontWeight:'700'}}>{t('search') as string}</Text></TouchableOpacity>
       </View>
 
       <View style={styles.filtersRow}>
+        <TouchableOpacity 
+          style={[styles.filterPill, nearbyMe && styles.filterPillActive]} 
+          onPress={() => setNearbyMe(!nearbyMe)}
+        >
+          <Ionicons name="location" size={16} color={nearbyMe ? '#fff' : colors.textPrimary} />
+          <Text style={{color: nearbyMe ? '#fff' : colors.textPrimary, marginLeft: 4}}>Nearby Me</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.filterPill} onPress={() => setFiltersOpen(true)}>
-          <Text>
-            ⚙ {t('filters')}{useMemo(() => {
+          <Ionicons name="options" size={16} color={colors.textPrimary} />
+          <Text style={{color:colors.textPrimary, marginLeft: 4}}>
+            Filter{useMemo(() => {
               let c = 0; if (selectedType) c++; if (openNow) c++; if (radiusKm) c++;
               return c ? ` (${c})` : '';
             }, [selectedType, openNow, radiusKm])}
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>☰ {t('list')}</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>◯◯ {t('map')}</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}><Text>➕ {t('more')}</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.filterPill} onPress={() => setSortOpen(true)}>
+          <Ionicons name="swap-vertical" size={16} color={colors.textPrimary} />
+          <Text style={{color:colors.textPrimary, marginLeft: 4}}>Sort: {sortBy}</Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={[styles.resultsMeta,{color:colors.muted}]}>{resources.length} resources</Text>
@@ -167,6 +266,28 @@ export default function HomeScreen() {
               <TouchableOpacity style={[styles.ctaBtn, {backgroundColor:colors.primary}]} onPress={() => item.phone && Linking.openURL(`tel:${item.phone}`)}>
                 <Text style={{color:'#fff'}}>📞 {t('call') as string}</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityLabel={item.__saved ? 'Unsave resource' : 'Save resource'}
+                style={[styles.ctaBtn, {backgroundColor: colors.card, borderWidth:1, borderColor: colors.border}]}
+                onPress={async () => {
+                  const nowSaved = await toggleSaved({
+                    id: item.id,
+                    name: item.name,
+                    type: item.type,
+                    address: item.address,
+                    phone: item.phone,
+                    rating: item.rating,
+                    coords: item.coords
+                  });
+                  setResources(rs => rs.map(r => r.id === item.id ? { ...r, __saved: nowSaved } : r));
+                }}
+              >
+                <Ionicons
+                  name={item.__saved ? 'bookmark' : 'bookmark-outline'}
+                  size={20}
+                  color={item.__saved ? '#dc2626' : colors.textPrimary}
+                />
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -177,7 +298,12 @@ export default function HomeScreen() {
           <View style={styles.modalSheet}>
             <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
               <Text style={{fontWeight:'800'}}>Advanced Filters</Text>
-              <TouchableOpacity onPress={() => setFiltersOpen(false)}><Text>✕</Text></TouchableOpacity>
+              <TouchableOpacity 
+                style={{padding: 8}} 
+                onPress={() => setFiltersOpen(false)}
+              >
+                <Text style={{fontSize: 18}}>✕</Text>
+              </TouchableOpacity>
             </View>
             <ScrollView style={{marginTop:12}} contentContainerStyle={{paddingBottom:16}}>
               <Text style={styles.sectionTitle}>Quick Filters</Text>
@@ -281,6 +407,204 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={sortOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+              <Text style={{fontWeight:'800'}}>Sort By</Text>
+              <TouchableOpacity onPress={() => setSortOpen(false)}><Text>✕</Text></TouchableOpacity>
+            </View>
+            <View style={{marginTop:12}}>
+              {[
+                { key: 'distance', label: 'Distance', icon: 'location' },
+                { key: 'rating', label: 'Rating', icon: 'star' },
+                { key: 'name', label: 'Name', icon: 'text' }
+              ].map(option => (
+                <TouchableOpacity 
+                  key={option.key}
+                  style={[styles.sortOption, sortBy === option.key && styles.sortOptionSelected]}
+                  onPress={() => {
+                    setSortBy(option.key as any);
+                    setSortOpen(false);
+                  }}
+                >
+                  <Ionicons 
+                    name={option.icon as any} 
+                    size={20} 
+                    color={sortBy === option.key ? '#fff' : colors.textPrimary} 
+                  />
+                  <Text style={[styles.sortOptionText, sortBy === option.key && styles.sortOptionTextSelected]}>
+                    {option.label}
+                  </Text>
+                  {sortBy === option.key && <Ionicons name="checkmark" size={20} color="#fff" />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={locationPickerOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+              <Text style={{fontWeight:'800'}}>Choose Location</Text>
+              <TouchableOpacity onPress={() => setLocationPickerOpen(false)}><Text>✕</Text></TouchableOpacity>
+            </View>
+            <View style={{marginTop:12}}>
+              <TouchableOpacity 
+                style={styles.locationOption}
+                onPress={async () => {
+                  await getCurrentLocation();
+                  setLocationPickerOpen(false);
+                }}
+              >
+                <Ionicons name="location" size={20} color={colors.primary} />
+                <View style={{marginLeft:12, flex:1}}>
+                  <Text style={{fontWeight:'600', color: colors.textPrimary}}>Use Current Location</Text>
+                  <Text style={{fontSize:12, color: colors.textSecondary, marginTop:2}}>Detect automatically</Text>
+                </View>
+                <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.locationOption}
+                onPress={() => {
+                  // Open location search modal
+                  setLocationSearchOpen(true);
+                  setLocationPickerOpen(false);
+                }}
+              >
+                <Ionicons name="search" size={20} color={colors.primary} />
+                <View style={{marginLeft:12, flex:1}}>
+                  <Text style={{fontWeight:'600', color: colors.textPrimary}}>Search Location</Text>
+                  <Text style={{fontSize:12, color: colors.textSecondary, marginTop:2}}>Enter city or address</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.locationOption}
+                onPress={() => {
+                  // Open map picker modal
+                  setMapPickerOpen(true);
+                  setLocationPickerOpen(false);
+                }}
+              >
+                <Ionicons name="map" size={20} color={colors.primary} />
+                <View style={{marginLeft:12, flex:1}}>
+                  <Text style={{fontWeight:'600', color: colors.textPrimary}}>Pick on Map</Text>
+                  <Text style={{fontSize:12, color: colors.textSecondary, marginTop:2}}>Select on interactive map</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Location Search Modal */}
+      <Modal visible={locationSearchOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+              <Text style={{fontWeight:'800'}}>Search Location</Text>
+              <TouchableOpacity 
+                style={{padding: 8}} 
+                onPress={() => setLocationSearchOpen(false)}
+              >
+                <Text style={{fontSize: 18}}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{marginTop:12}}>
+              <TextInput 
+                style={[styles.searchInput, {marginBottom: 12, color: '#000000', fontSize: 16, padding: 12}]} 
+                placeholder="Enter city, address or landmark" 
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholderTextColor="#888888"
+                autoFocus
+              />
+              <FlatList
+                data={searchQuery ? [
+                  {id: '1', name: `${searchQuery}, Telangana`, description: 'Search result'},
+                  {id: '2', name: `${searchQuery} Central, Maharashtra`, description: 'Area in Mumbai'},
+                  {id: '3', name: `${searchQuery} District, Delhi`, description: 'Area in Delhi'},
+                  {id: '4', name: `${searchQuery} Layout, Bangalore`, description: 'Area in Bangalore'},
+                  {id: '5', name: `${searchQuery} Nagar, Chennai`, description: 'Area in Chennai'}
+                ] : [
+                  {id: '1', name: 'Hyderabad, Telangana', description: 'City in India'},
+                  {id: '2', name: 'Mumbai, Maharashtra', description: 'City in India'},
+                  {id: '3', name: 'Delhi, India', description: 'Capital of India'},
+                  {id: '4', name: 'Bangalore, Karnataka', description: 'Tech hub of India'},
+                  {id: '5', name: 'Chennai, Tamil Nadu', description: 'City in South India'}
+                ]}
+                keyExtractor={item => item.id}
+                renderItem={({item}) => (
+                  <TouchableOpacity 
+                    style={styles.locationOption}
+                    onPress={() => {
+                      setCurrentLocation(item.name);
+                      setLocationSearchOpen(false);
+                    }}
+                  >
+                    <Ionicons name="location-outline" size={20} color={colors.primary} />
+                    <View style={{marginLeft:12, flex:1}}>
+                      <Text style={{fontWeight:'600', color: colors.textPrimary}}>{item.name}</Text>
+                      <Text style={{fontSize:12, color: colors.textSecondary, marginTop:2}}>{item.description}</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Map Picker Modal */}
+      <Modal visible={mapPickerOpen} animationType="slide" transparent>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+              <Text style={{fontWeight:'800'}}>Pick on Map</Text>
+              <TouchableOpacity 
+                style={{padding: 8}} 
+                onPress={() => setMapPickerOpen(false)}
+              >
+                <Text style={{fontSize: 18}}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{marginTop:12, height: 300, borderRadius: 12}}>
+              <MapView 
+                style={{width: '100%', height: '100%', borderRadius: 12}}
+                provider={PROVIDER_GOOGLE}
+                initialRegion={{
+                  latitude: 17.3850,
+                  longitude: 78.4867,
+                  latitudeDelta: 0.05,
+                  longitudeDelta: 0.05,
+                }}
+              >
+                <Marker
+                  coordinate={{latitude: 17.3850, longitude: 78.4867}}
+                  title="Selected Location"
+                  draggable
+                />
+              </MapView>
+            </View>
+            <TouchableOpacity 
+              style={[styles.actionBtn, {backgroundColor: colors.primary, marginTop: 16}]}
+              onPress={() => {
+                setCurrentLocation('Selected Map Location');
+                setMapPickerOpen(false);
+              }}
+            >
+              <Text style={{color:'#fff', fontWeight:'700'}}>Confirm Location</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -301,7 +625,8 @@ const createStyles = (colors: any) => StyleSheet.create({
   searchInput: { flex:1, backgroundColor:'#fff', borderRadius:12, paddingHorizontal:12, height:44, borderWidth:1, borderColor: colors.border },
   searchBtn: { backgroundColor: colors.primary, height:44, borderRadius:12, alignItems:'center', justifyContent:'center', paddingHorizontal:16 },
   filtersRow: { flexDirection:'row', gap:10, paddingHorizontal:16, marginTop:12 },
-  filterPill: { backgroundColor:'#fff', borderWidth:1, borderColor: colors.border, borderRadius:12, paddingVertical:8, paddingHorizontal:12 },
+  filterPill: { backgroundColor:'#fff', borderWidth:1, borderColor: colors.border, borderRadius:12, paddingVertical:8, paddingHorizontal:12, flexDirection:'row', alignItems:'center' },
+  filterPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   resultsMeta: { paddingHorizontal:16, marginTop:12, color: colors.muted },
   card: { backgroundColor:'#fff', marginHorizontal:16, marginTop:12, borderRadius:14, padding:12, elevation:1, borderWidth:1, borderColor: colors.border },
   itemTitle: { fontWeight:'800', color: colors.textPrimary },
@@ -326,7 +651,12 @@ const createStyles = (colors: any) => StyleSheet.create({
   ,servicePillText: { color:'#334155', fontWeight:'700', fontSize:12 }
   ,langPill: { backgroundColor:'#e2e8f0', paddingHorizontal:10, paddingVertical:6, borderRadius:8 }
   ,langPillText: { color:'#0f172a', fontWeight:'700', fontSize:12 }
-  ,ctaBtn: { flex:1, height:44, borderRadius:10, alignItems:'center', justifyContent:'center' }
+  ,ctaBtn: { flex:1, height:44, borderRadius:10, alignItems:'center', justifyContent:'center' },
+  sortOption: { flexDirection:'row', alignItems:'center', paddingVertical:12, paddingHorizontal:16, borderRadius:8, marginBottom:8 },
+  sortOptionSelected: { backgroundColor: colors.primary },
+  sortOptionText: { marginLeft:12, flex:1, color: colors.textPrimary, fontWeight:'600' },
+  sortOptionTextSelected: { color: '#fff' },
+  locationOption: { flexDirection:'row', alignItems:'center', paddingVertical:16, paddingHorizontal:16, borderRadius:8, marginBottom:8, backgroundColor: colors.card, borderWidth:1, borderColor: colors.border }
 });
 
 

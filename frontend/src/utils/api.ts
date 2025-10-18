@@ -30,8 +30,8 @@ const guessedLan = (() => {
 })();
 
 // Safe defaults for emulators/simulators
-// Override Android fallback to your LAN IP to support physical device testing
-const defaultUrl = Platform.OS === 'android' ? 'http://192.168.137.235:4000' : 'http://localhost:4000';
+// Override Android fallback to your hosted backend
+const defaultUrl = Platform.OS === 'android' ? 'https://jeevanpath-frontend.onrender.com' : 'https://jeevanpath-frontend.onrender.com';
 
 // Prefer the Expo/Metro host on-device to avoid 10.0.2.2 on physical devices
 let CURRENT_BASE_URL = (extraUrl || envUrl || guessedLan || defaultUrl);
@@ -138,6 +138,33 @@ export async function registerDevice(phone: string, deviceId: string, deviceName
   const res = await api.post('/api/users/register-device', { phone, deviceId, deviceName, platform });
   // eslint-disable-next-line no-console
   console.log('[API] POST /api/users/register-device response =', res.data);
+  return res.data;
+}
+
+export async function submitContactForm(formData: any) {
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/contact-form', formData);
+  const res = await api.post('/api/contact-form', formData);
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/contact-form response =', res.data);
+  return res.data;
+}
+
+export async function processVoiceCommand(text: string, userContext?: { userId?: string; location?: { lat: number; lng: number }; previousQueries?: string[] }) {
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/nlp/process', { text, userContext });
+  const res = await api.post('/api/nlp/process', { text, userContext });
+  // eslint-disable-next-line no-console
+  console.log('[API] POST /api/nlp/process response =', res.data);
+  return res.data;
+}
+
+export async function getVoiceAnalytics(userId?: string) {
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/nlp/analytics', { userId });
+  const res = await api.get('/api/nlp/analytics', { params: { userId } });
+  // eslint-disable-next-line no-console
+  console.log('[API] GET /api/nlp/analytics response =', res.data);
   return res.data;
 }
 
